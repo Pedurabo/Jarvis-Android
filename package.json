@@ -1,0 +1,12 @@
+{
+    "name":  "jarvis-hosting-preview",
+    "version":  "1.0.0",
+    "private":  true,
+    "description":  "Health-only hosting preview for Jarvis",
+    "scripts":  {
+                    "start":  "node hosting-preview.js"
+                },
+    "engines":  {
+                    "node":  "22.x"
+                }
+}
