@@ -1,0 +1,25 @@
+{
+    "country":  "Uganda",
+    "schemaVersion":  1,
+    "places":  [
+                   {
+                       "id":  "acacia-mall",
+                       "name":  "Acacia Mall",
+                       "verifiedAt":  "2026-10-15",
+                       "address":  "14-18 Cooper Road, Kisementi, Kampala",
+                       "sourceUrl":  "https://www.theacaciamall.com/contact-acacia-mall",
+                       "category":  "shopping",
+                       "area":  "Kisementi"
+                   },
+                   {
+                       "id":  "gaddafi-national-mosque",
+                       "name":  "Gaddafi National Mosque",
+                       "verifiedAt":  "2026-10-15",
+                       "address":  "Old Kampala Road, Kampala",
+                       "sourceUrl":  "https://visitkampala.kcca.go.ug/business_details/old-kampala-national-mosque",
+                       "category":  "tourism",
+                       "area":  "Old Kampala"
+                   }
+               ],
+    "city":  "Kampala"
+}

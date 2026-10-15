@@ -4,7 +4,7 @@
     "private":  true,
     "description":  "Health-only hosting preview for Jarvis",
     "scripts":  {
-                    "start":  "node hosting-preview.js"
+                    "start":  "node kampala-places-server.js"
                 },
     "engines":  {
                     "node":  "22.x"
