@@ -60,6 +60,44 @@ function loadCatalog() {
 
 const catalog = loadCatalog();
 
+const knowledgeCatalog = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "kampala-knowledge.json"), "utf8")
+);
+
+if (
+  knowledgeCatalog.schemaVersion !== 1 ||
+  !Array.isArray(knowledgeCatalog.entries) ||
+  knowledgeCatalog.entries.length !== 1
+) {
+  throw new Error("Invalid knowledge catalog");
+}
+
+for (const entry of knowledgeCatalog.entries) {
+  if (
+    !entry.id ||
+    !entry.topic ||
+    !entry.title ||
+    !entry.answer ||
+    !entry.reviewedAt ||
+    !Array.isArray(entry.sources) ||
+    entry.sources.length === 0
+  ) {
+    throw new Error("Invalid knowledge entry");
+  }
+
+  for (const source of entry.sources) {
+    if (!source.publisher || !source.url) {
+      throw new Error("Invalid knowledge source");
+    }
+
+    const parsedUrl = new URL(source.url);
+
+    if (parsedUrl.protocol !== "https:") {
+      throw new Error("Knowledge sources must use HTTPS");
+    }
+  }
+}
+
 function sendJson(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -99,6 +137,27 @@ const server = http.createServer((req, res) => {
       schemaVersion: catalog.schemaVersion,
       count: results.length,
       places: results.slice(0, 50)
+    });
+  }
+
+  if (req.method === "GET" && url.pathname === "/knowledge") {
+    const topic = (url.searchParams.get("topic") || "")
+      .trim().toLowerCase();
+
+    if (!topic || topic.length > 100) {
+      return sendJson(res, 400, {
+        error: "A valid topic is required"
+      });
+    }
+
+    const entries = knowledgeCatalog.entries.filter(
+      entry => entry.topic.toLowerCase() === topic
+    );
+
+    return sendJson(res, 200, {
+      schemaVersion: knowledgeCatalog.schemaVersion,
+      count: entries.length,
+      entries
     });
   }
 
