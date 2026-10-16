@@ -1,0 +1,1 @@
+Place gemini_nano.bin and mobilebert_embedding.tflite in this folder.

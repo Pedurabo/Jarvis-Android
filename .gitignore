@@ -1,0 +1,49 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+# Jarvis backend secrets
+/backend/.env
+/backend/.env.*
+!/backend/.env.example
+/backend/node_modules/
+
+# M1F-I3C.120: Local and private project files
+/.idea/
+/.kotlin/
+/.gradle/
+/**/build/
+/local.properties
+
+# Local logs and checkpoint backups
+*.log
+*.bak
+
+# Android private configuration
+/app/google-services.json
+*.jks
+*.keystore
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local model pending publication and license review
+/app/src/main/assets/models/llama3_2_1b.bin
+
+# Backend secrets and generated dependencies
+/backend/.env
+/backend/.env.*
+!/backend/.env.example
+/backend/node_modules/
