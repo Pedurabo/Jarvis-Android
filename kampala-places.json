@@ -19,6 +19,33 @@
                        "sourceUrl":  "https://visitkampala.kcca.go.ug/business_details/old-kampala-national-mosque",
                        "category":  "tourism",
                        "area":  "Old Kampala"
+                   },
+                   {
+                       "id":  "kampala-serena-hotel",
+                       "name":  "Kampala Serena Hotel",
+                       "category":  "accommodation",
+                       "area":  "Kampala",
+                       "address":  "Kintu Road, Kampala, Uganda",
+                       "sourceUrl":  "https://www.serenahotels.com/kampala/",
+                       "verifiedAt":  "2026-10-19"
+                   },
+                   {
+                       "id":  "the-explorer-kampala-serena",
+                       "name":  "The Explorer (Kampala Serena Hotel)",
+                       "category":  "restaurant",
+                       "area":  "Kampala",
+                       "address":  "Plot 16-20 Kintu Road, Kampala, Uganda",
+                       "sourceUrl":  "https://visitkampala.kcca.go.ug/business_details/the-explorer-kampala-serena-hotel",
+                       "verifiedAt":  "2026-10-19"
+                   },
+                   {
+                       "id":  "c-care-international-hospital-kampala",
+                       "name":  "C-Care IHK (International Hospital Kampala)",
+                       "category":  "healthcare",
+                       "area":  "Kampala",
+                       "address":  "Plot 4686 Barnabas Road, Kampala, Uganda",
+                       "sourceUrl":  "https://visitkampala.kcca.go.ug/business_details/international-hospital-kampala",
+                       "verifiedAt":  "2026-10-19"
                    }
                ],
     "city":  "Kampala"
