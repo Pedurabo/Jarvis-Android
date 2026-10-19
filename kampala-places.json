@@ -46,6 +46,51 @@
                        "address":  "Plot 4686 Barnabas Road, Kampala, Uganda",
                        "sourceUrl":  "https://visitkampala.kcca.go.ug/business_details/international-hospital-kampala",
                        "verifiedAt":  "2026-10-19"
+                   },
+                   {
+                       "id":  "khana-khazana-kololo",
+                       "name":  "Khana Khazana",
+                       "category":  "restaurant",
+                       "area":  "Kololo",
+                       "address":  "Plot 20 Acacia Avenue, Kololo, Kampala",
+                       "sourceUrl":  "https://visitkampala.kcca.go.ug/business_details/khana-khazana",
+                       "verifiedAt":  "2026-10-19"
+                   },
+                   {
+                       "id":  "fairway-boutique-hotel",
+                       "name":  "Fairway Boutique Hotel",
+                       "category":  "accommodation",
+                       "area":  "Nakasero",
+                       "address":  "Plot 3 Kafu Road, Nakasero, Kampala",
+                       "sourceUrl":  "https://fairwayhotel.co.ug/contact/",
+                       "verifiedAt":  "2026-10-19"
+                   },
+                   {
+                       "id":  "ndere-cultural-centre",
+                       "name":  "Ndere Cultural Centre",
+                       "category":  "tourism",
+                       "area":  "Ntinda",
+                       "address":  "Plot 4505 Kira Road, Ntinda-Kisaasi, Kampala",
+                       "sourceUrl":  "https://visitkampala.kcca.go.ug/business_details/ndere-cultural-centre",
+                       "verifiedAt":  "2026-10-19"
+                   },
+                   {
+                       "id":  "village-mall-bugolobi",
+                       "name":  "The Village Mall",
+                       "category":  "shopping",
+                       "area":  "Bugolobi",
+                       "address":  "7-9 Luthuli Avenue, Bugolobi, Kampala",
+                       "sourceUrl":  "https://thevillagemall.co.ug/contact-us/",
+                       "verifiedAt":  "2026-10-19"
+                   },
+                   {
+                       "id":  "kiruddu-national-referral-hospital",
+                       "name":  "Kiruddu National Referral Hospital",
+                       "category":  "healthcare",
+                       "area":  "Makindye",
+                       "address":  "Salaama Road, Kiruddu, Makindye Division, Kampala",
+                       "sourceUrl":  "https://www.kiruddu.hosp.go.ug/department/view/emergency-services",
+                       "verifiedAt":  "2026-10-19"
                    }
                ],
     "city":  "Kampala"
