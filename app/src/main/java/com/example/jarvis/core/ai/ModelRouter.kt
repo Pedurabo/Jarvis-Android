@@ -25,6 +25,12 @@ class ModelRouter @Inject constructor(
         isRetry: Boolean = false,
         previousConfidence: ConfidenceLevel? = null
     ): Route {
+        // Do not select an unconfigured development-only cloud service.
+        if (!CloudInferenceAvailabilityPolicy.isEnabled) {
+            Log.d(TAG, "Routing to LOCAL: cloud AI unavailable.")
+            return Route.LOCAL
+        }
+
         // 1. Escalation rule: Low confidence in previous attempt triggers Cloud
         if (isRetry && previousConfidence == ConfidenceLevel.LOW) {
             Log.d(TAG, "Routing to CLOUD: Escalating due to low confidence.")
@@ -52,7 +58,8 @@ class ModelRouter @Inject constructor(
      * Executes the generation task on the selected model.
      */
     suspend fun generateResponse(prompt: String, route: Route): String {
-        return when (route) {
+        val effectiveRoute = CloudInferenceAvailabilityPolicy.effectiveRoute(route)
+        return when (effectiveRoute) {
             Route.LOCAL -> localLLM.generateResponse(prompt)
             Route.CLOUD -> cloudLLM.generateResponse(prompt)
         }

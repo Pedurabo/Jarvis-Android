@@ -94,6 +94,9 @@ class JarvisPromptBuilder {
             If uncertain, say so rather than inventing information.
             Do not claim to have performed device actions.
             Keep responses clear and relevant.
+            For a greeting or simple social question, answer naturally in one or two sentences.
+            Do not narrate your internal reasoning, tool selection, or processing steps.
+            Do not invent tool results or describe actions you have not performed.
             """.trimIndent()
         } else {
             systemPrompt
@@ -121,11 +124,21 @@ class JarvisPromptBuilder {
             ""
         }
 
-        val effectiveSystemPrompt =
+        val answerPrecisionGuidance =
+            if (tools.isBlank()) AnswerPrecisionPolicy.guidance(query) else ""
+
+        val baseSystemPrompt =
             if (technicalGuidance.isBlank()) {
                 focusedSystemPrompt
             } else {
                 "$focusedSystemPrompt\n\n$technicalGuidance"
+            }
+
+        val effectiveSystemPrompt =
+            if (answerPrecisionGuidance.isBlank()) {
+                baseSystemPrompt
+            } else {
+                "$baseSystemPrompt\n\n$answerPrecisionGuidance"
             }
         val userContext = buildString {
             if (chatHistory.isNotBlank()) {

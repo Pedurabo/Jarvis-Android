@@ -45,6 +45,25 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    fun provideKampalaKnowledgeApiService(
+        okHttpClient: OkHttpClient
+    ): KampalaKnowledgeApiService {
+        val knowledgeClient = okHttpClient.newBuilder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        return Retrofit.Builder()
+            .baseUrl("https://jarvis-kampala-preview.onrender.com/")
+            .client(knowledgeClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(KampalaKnowledgeApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
     fun provideGoogleMapsApiService(okHttpClient: OkHttpClient): GoogleMapsApiService {
         return Retrofit.Builder()
             .baseUrl("https://maps.googleapis.com/")

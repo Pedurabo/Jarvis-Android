@@ -3,7 +3,12 @@ package com.example.jarvis.core.ai
 import android.util.Log
 import com.example.jarvis.core.network.KampalaPlacesQueryRoute
 import com.example.jarvis.core.network.KampalaPlacesRepository
+import com.example.jarvis.core.network.KampalaKnowledgeQueryRoute
+import com.example.jarvis.core.network.KampalaKnowledgeRepository
 import com.example.jarvis.core.network.KampalaPlacesResponseFormatter
+import com.example.jarvis.core.network.KampalaPlacesResultPolicy
+import com.example.jarvis.core.network.KampalaNamedDestinationRoute
+import com.example.jarvis.core.ai.KampalaGroundingSafetyPolicy
 import com.example.jarvis.core.context.ContextManager
 import com.example.jarvis.skills.SkillRegistry
 import kotlinx.coroutines.async
@@ -29,7 +34,8 @@ class AssistantController @Inject constructor(
     private val responsePipeline: ResponsePipeline,
     private val intentAnalyzer: IntentAnalyzer,
     private val responseCache: ResponseCache,
-    private val kampalaPlacesRepository: KampalaPlacesRepository
+    private val kampalaPlacesRepository: KampalaPlacesRepository,
+    private val kampalaKnowledgeRepository: KampalaKnowledgeRepository
 ) {
     private val TAG = "AssistantController"
     private val MAX_STEPS = 3
@@ -39,9 +45,12 @@ class AssistantController @Inject constructor(
     val events: Flow<AssistantEvent> = _events.asSharedFlow()
 
     enum class ResponseOrigin {
+        CURATED_FACT,
         AI_RESPONSE,
         DIRECTORY_RESULT,
-        DIRECTORY_NOTICE
+        DIRECTORY_NOTICE,
+        KNOWLEDGE_RESULT,
+        KNOWLEDGE_NOTICE
     }
 
     data class AssistantResponse(
@@ -67,7 +76,11 @@ class AssistantController @Inject constructor(
     suspend fun onUserQuery(query: String, onUpdate: (String) -> Unit): AssistantResponse = coroutineScope {
         val startTime = System.currentTimeMillis()
 
-        val placesRequest = KampalaPlacesQueryRoute.resolve(query)
+        val discoveryDecision = KampalaDiscoveryIntelligence.decide(query)
+
+        val placesRequest =
+            (discoveryDecision as? KampalaDiscoveryIntelligence.Decision.Search)
+                ?.request
 
         if (placesRequest != null) {
             onUpdate("Searching Kampala places...")
@@ -78,7 +91,7 @@ class AssistantController @Inject constructor(
                 category = placesRequest.category
             )
 
-            val placesAnswer = KampalaPlacesResponseFormatter.format(searchResult)
+            val placesAnswer = KampalaPlacesResultPolicy.format(placesRequest, searchResult)
 
             val placesConfidence = confidenceScorer.calculateConfidence(
                 query, placesAnswer, 0, 0
@@ -99,7 +112,7 @@ class AssistantController @Inject constructor(
             val placesResponse = AssistantResponse(
                 text = placesAnswer,
                 voiceOptimizedText = placesAnswer,
-                confidence = placesConfidence.level,
+                confidence = EvidenceConfidencePolicy.level(placesOrigin),
                 origin = placesOrigin,
                 metadata = ResponseMetadata(
                     route = modelRouter.route(query),
@@ -115,6 +128,206 @@ class AssistantController @Inject constructor(
             return@coroutineScope placesResponse
         }
 
+        // M1F-I3C.120K.2: intercept unresolved place-discovery
+        // requests before general AI processing.
+        // The original Places router contract remains unchanged.
+        val locationNotice = KampalaLocationFallback.notice(query) ?: KampalaNamedDestinationRoute.notice(query)
+
+        if (locationNotice != null) {
+            onUpdate("Checking Kampala location spelling...")
+
+            val locationConfidence = confidenceScorer.calculateConfidence(
+                query, locationNotice, 0, 0
+            )
+
+            val locationResponse = AssistantResponse(
+                text = locationNotice,
+                voiceOptimizedText = locationNotice,
+                confidence = EvidenceConfidencePolicy.level(ResponseOrigin.DIRECTORY_NOTICE),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs = System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", locationNotice)
+
+            return@coroutineScope locationResponse
+        }
+
+        // Source-grounded Kampala history. Never fall back to model-generated
+        // history when the knowledge service is unavailable.
+        if (KampalaKnowledgeQueryRoute.resolve(query) ==
+            KampalaKnowledgeQueryRoute.Topic.HISTORY
+        ) {
+            onUpdate("Checking Kampala history sources...")
+
+            val knowledgeResult = kampalaKnowledgeRepository.getHistory()
+
+            val historyAnswer = when (knowledgeResult) {
+                is KampalaKnowledgeRepository.Result.Success -> {
+                    val entry = knowledgeResult.entry
+
+                    buildString {
+                        appendLine(entry.title)
+                        appendLine()
+                        appendLine(entry.answer)
+                        appendLine()
+                        appendLine("Sources:")
+
+                        entry.sources.forEach { source ->
+                            appendLine("${source.publisher}: ${source.url}")
+                        }
+
+                        appendLine()
+                        append("Knowledge reviewed: ${entry.reviewedAt}.")
+                    }
+                }
+
+                KampalaKnowledgeRepository.Result.NotFound ->
+                    "I don't currently have a verified Kampala history entry. " +
+                    "Please try again when the Kampala Knowledge service has been updated."
+
+                is KampalaKnowledgeRepository.Result.Failure ->
+                    "I couldn't verify Kampala's history from the Knowledge service " +
+                    "right now. Please try again later. " +
+                    "I won't substitute an unverified historical account."
+            }
+
+            val historyOrigin = when (knowledgeResult) {
+                is KampalaKnowledgeRepository.Result.Success ->
+                    ResponseOrigin.KNOWLEDGE_RESULT
+
+                else ->
+                    ResponseOrigin.KNOWLEDGE_NOTICE
+            }
+
+            val historyConfidence = confidenceScorer.calculateConfidence(
+                query, historyAnswer, 0, 0
+            )
+
+            val historyResponse = AssistantResponse(
+                text = historyAnswer,
+                voiceOptimizedText = historyAnswer,
+                confidence = EvidenceConfidencePolicy.level(historyOrigin),
+                origin = historyOrigin,
+                metadata = ResponseMetadata(
+                    route = modelRouter.route(query),
+                    processingTimeMs = System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", historyAnswer)
+
+            return@coroutineScope historyResponse
+        }
+
+        // Kampala Life discovery only. No bookings or payments.
+        val lifeClassification = KampalaLifeClassifier.classify(query)
+        val lifeNotice = lifeClassification?.let {
+            KampalaLifeResponsePolicy.notice(it)
+        }
+
+        if (lifeNotice != null) {
+            onUpdate("Checking Kampala Life service availability...")
+
+            val lifeConfidence = confidenceScorer.calculateConfidence(
+                query, lifeNotice, 0, 0
+            )
+
+            val lifeResponse = AssistantResponse(
+                text = lifeNotice,
+                voiceOptimizedText = lifeNotice,
+                confidence = EvidenceConfidencePolicy.level(ResponseOrigin.DIRECTORY_NOTICE),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs = System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", lifeNotice)
+
+            return@coroutineScope lifeResponse
+        }
+
+        // Specific local-discovery questions must not fall through to
+        // an ungrounded model when directory coverage is incomplete.
+        val factualNotice =
+            KampalaEvidenceAndRelevancePolicy.notice(query)
+                ?: KampalaFactualReliabilityBoundary.notice(query)
+
+        val compositionalNotice =
+            CompositionalDiscoveryResponsePolicy.notice(query)
+
+        val discoveryNotice = compositionalNotice
+            ?: factualNotice
+            ?: (discoveryDecision as? KampalaDiscoveryIntelligence.Decision.Notice)?.message
+
+        if (discoveryNotice != null) {
+            onUpdate("Checking Kampala discovery coverage...")
+
+            val discoveryConfidence = confidenceScorer.calculateConfidence(
+                query, discoveryNotice, 0, 0
+            )
+
+            val discoveryResponse = AssistantResponse(
+                text = discoveryNotice,
+                voiceOptimizedText = discoveryNotice,
+                confidence = EvidenceConfidencePolicy.level(ResponseOrigin.DIRECTORY_NOTICE),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs = System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", discoveryNotice)
+
+            return@coroutineScope discoveryResponse
+        }
+        // Protect unsupported Kampala location and landmark questions
+        // before entering the ungrounded language-model response path.
+        val groundingNotice = KampalaGroundingSafetyPolicy.notice(query)
+
+        if (groundingNotice != null) {
+            onUpdate("Checking verified Kampala coverage...")
+
+            val groundingConfidence = confidenceScorer.calculateConfidence(
+                query, groundingNotice, 0, 0
+            )
+
+            val groundingResponse = AssistantResponse(
+                text = groundingNotice,
+                voiceOptimizedText = groundingNotice,
+                confidence = EvidenceConfidencePolicy.level(ResponseOrigin.DIRECTORY_NOTICE),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs = System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", groundingNotice)
+
+            return@coroutineScope groundingResponse
+        }
         onUpdate("Thinking...")
         val historyDeferred = async { conversationRepository.getLastMessages(5) }
         val memoriesDeferred = async { retrievalManager.getRelevantMemories(3) }
@@ -135,7 +348,12 @@ class AssistantController @Inject constructor(
             }
 
         val intentResult = intentAnalyzer.analyze(query)
-        var currentRoute = if (intentResult.strategy == "CLOUD_REQUIRED") ModelRouter.Route.CLOUD else modelRouter.route(query)
+        val proposedRoute = if (intentResult.strategy == "CLOUD_REQUIRED") {
+            ModelRouter.Route.CLOUD
+        } else {
+            modelRouter.route(query)
+        }
+        var currentRoute = CloudInferenceAvailabilityPolicy.effectiveRoute(proposedRoute)
 
         var currentStep = 0
         val executionHistory = mutableListOf<String>()
@@ -288,9 +506,44 @@ class AssistantController @Inject constructor(
             finalAnswerText = "I encountered a processing issue. Could you try again?"
         }
 
+        // Apply narrowly scoped answer-quality checks only to
+        // ordinary model conversation with no executed tools.
+        if (promptMode == PromptModePolicy.Mode.CONVERSATION &&
+            toolUsageCount == 0) {
+            finalAnswerText = ConversationalAnswerQualityPolicy.review(
+                query, finalAnswerText
+            )
+        }
+        // Reject known Kampala geographical contradictions before
+        // generating voice output, displaying, or saving the answer.
+        if (KampalaFactualAccuracyPolicy.shouldReject(query, finalAnswerText)) {
+            Log.w(TAG, "Kampala factual contradiction detected")
+            finalAnswerText = KampalaFactualAccuracyPolicy.SAFE_RESPONSE
+        }
+
+        if (toolUsageCount == 0) {
+            finalAnswerText = KampalaEvidenceAndRelevancePolicy.review(
+                query, finalAnswerText
+            )
+        }
+
         onUpdate("Polishing...")
+        if (toolUsageCount == 0 &&
+            !ModelOutputIntegrityPolicy.isSafe(query, finalAnswerText)) {
+            Log.w(TAG, "CDI model output integrity rejection")
+            finalAnswerText =
+                "I couldn't produce a reliable response to that request. " +
+                    "Please try rephrasing it."
+        }
+
         if (!ModelOutputGuard.isUsable(finalAnswerText)) {
             finalAnswerText = "I couldn't produce a reliable response. Please try again."
+        }
+
+        if (toolUsageCount == 0) {
+            finalAnswerText = KampalaTrustedFactPolicy.review(
+                query, finalAnswerText
+            )
         }
 
         val finalVoiceText = try {
@@ -308,10 +561,24 @@ class AssistantController @Inject constructor(
             query = query,
             answer = finalAnswerText
         )
+        val curatedFact = if (toolUsageCount == 0) {
+            KampalaTrustedFactPolicy.answer(query)
+        } else {
+            null
+        }
+
+        val finalOrigin = if (curatedFact != null &&
+            finalAnswerText == curatedFact) {
+            ResponseOrigin.CURATED_FACT
+        } else {
+            ResponseOrigin.AI_RESPONSE
+        }
+
         val finalResponse = AssistantResponse(
             text = visibleAnswerText,
             voiceOptimizedText = finalVoiceText,
-            confidence = confidence.level,
+            confidence = EvidenceConfidencePolicy.level(finalOrigin),
+            origin = finalOrigin,
             metadata = ResponseMetadata(
                 route = currentRoute,
                 processingTimeMs = System.currentTimeMillis() - startTime,

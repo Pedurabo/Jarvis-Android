@@ -1,6 +1,11 @@
 package com.example.jarvis.ui
 
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -136,11 +141,14 @@ fun ChatScreen(viewModel: JarvisViewModel = hiltViewModel()) {
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(
+                    horizontal = 16.dp,
+                    vertical = 20.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 if (uiState.messages.isEmpty()) {
-                    item { WelcomeMessage() }
+                    item { WelcomeMessage(onSuggestionClick = { viewModel.onTextChanged(it) }) }
                 }
 
                 items(uiState.messages) { message ->
@@ -250,23 +258,83 @@ fun ErrorMessageBar(error: String) {
 }
 
 @Composable
-fun WelcomeMessage() {
+fun WelcomeMessage(onSuggestionClick: (String) -> Unit) {
+    // M1F-I3C.119C: practical Kampala-focused empty state.
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 64.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(top = 36.dp, bottom = 24.dp),
+        horizontalAlignment = Alignment.Start
     ) {
         Text(
-            text = "Hello, I am Jarvis.",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
+            text = "Explore Kampala with Jarvis",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
         )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         Text(
-            text = "Your on-device assistant for Kampala.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = Color.Gray
+            text = "Discover places, explore the city's history, and find useful local information.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        Text(
+            text = "TRY ASKING",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        val suggestions = listOf(
+            "Tell me about Kampala history",
+            "Find shopping places in Kisementi",
+            "Find a mosque in Old Kampala"
+        )
+
+        suggestions.forEach { suggestion ->
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp)
+                    .clickable { onSuggestionClick(suggestion) },
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = 0.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(
+                        horizontal = 16.dp,
+                        vertical = 15.dp
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = suggestion,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "↗",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "Tap a suggestion to add it to your message.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -291,29 +359,46 @@ fun ModelLoadingBar() {
 
 @Composable
 fun ChatHeader() {
+    // M1F-I3C.119C: compact conversational identity.
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        tonalElevation = 4.dp,
-        color = MaterialTheme.colorScheme.surface
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp
     ) {
         Row(
             modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .statusBarsPadding(),
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Surface(
+                modifier = Modifier.size(40.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "J",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+
             Column {
                 Text(
                     text = "Jarvis",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Push-to-Talk Mode",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
+                    text = "Your Kampala assistant",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -322,59 +407,96 @@ fun ChatHeader() {
 
 @Composable
 fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
-    val alignment = if (message.isUser) Alignment.End else Alignment.Start
-    val containerColor = if (message.isUser)
-        MaterialTheme.colorScheme.primary
-    else
-        MaterialTheme.colorScheme.secondaryContainer
-
-    val contentColor = if (message.isUser)
-        MaterialTheme.colorScheme.onPrimary
-    else
-        MaterialTheme.colorScheme.onSecondaryContainer
-
-    val shape = if (message.isUser)
-        RoundedCornerShape(20.dp, 20.dp, 4.dp, 20.dp)
-    else
-        RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp)
+    // Modern Jarvis conversation layout:
+    // compact user messages and open, readable assistant responses.
+    val isUser = message.isUser
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = alignment
+        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
-        Surface(
-            color = containerColor,
-            shape = shape,
-            tonalElevation = 2.dp,
-            modifier = Modifier.pointerInput(Unit) {
-                detectTapGestures(
-                    onLongPress = { onLongClick() }
-                )
-            }
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        if (isUser) {
+            Surface(
+                modifier = Modifier.widthIn(max = 304.dp),
+                shape = RoundedCornerShape(
+                    topStart = 20.dp,
+                    topEnd = 20.dp,
+                    bottomEnd = 6.dp,
+                    bottomStart = 20.dp
+                ),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            ) {
                 Text(
-                    text = if (message.isUser) AnnotatedString(message.text) else JarvisMarkdownFormatter.format(message.text),
-                    color = contentColor,
+                    text = message.text,
+                    modifier = Modifier.padding(
+                        horizontal = 16.dp,
+                        vertical = 12.dp
+                    ),
                     style = MaterialTheme.typography.bodyLarge
                 )
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerInput(onLongClick) {
+                        detectTapGestures(
+                            onLongPress = { onLongClick() }
+                        )
+                    }
+                    .padding(vertical = 4.dp)
+            ) {
+                // M1F-I3C.119N.2: compact assistant identity.
+                Text(
+                    text = "Jarvis",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
 
-                if (!message.isUser) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                JarvisLinkedAnswer(
+                    messageText = message.text,
+                    onLongClick = onLongClick
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     when (message.origin) {
+                        MessageOrigin.KNOWLEDGE_RESULT -> {
+                            Text(
+                                text = "Knowledge Result",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        MessageOrigin.KNOWLEDGE_NOTICE -> {
+                            Text(
+                                text = "Knowledge Notice",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
                         MessageOrigin.DIRECTORY_RESULT -> {
                             Text(
                                 text = "Directory Result",
-                                color = contentColor,
-                                style = MaterialTheme.typography.labelSmall
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
 
                         MessageOrigin.DIRECTORY_NOTICE -> {
                             Text(
                                 text = "Directory Notice",
-                                color = contentColor,
-                                style = MaterialTheme.typography.labelSmall
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
@@ -383,20 +505,374 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
                         }
                     }
                 }
-            }
-        }
 
-        if (!message.isUser) {
-            Text(
-                text = "Long press to correct",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.Gray,
-                modifier = Modifier.padding(start = 4.dp, top = 2.dp)
-            )
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "Long press to correct",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun JarvisLinkedAnswer(
+    messageText: String,
+    onLongClick: () -> Unit
+) {
+    // M1F-I3C.119J: compact institutional source references.
+    val uriHandler = LocalUriHandler.current
+    val linkColor = MaterialTheme.colorScheme.primary
 
+    val urlPattern = remember {
+        Regex("""https://[^\s<>()]+""")
+    }
+
+    val sourceLinks = remember(messageText) {
+        urlPattern.findAll(messageText)
+            .map { match ->
+                match.value.trimEnd(
+                    '.', ',', ';', ':', '!', '?', ')', ']'
+                )
+            }
+            .filter { candidate ->
+                try {
+                    val uri = java.net.URI(candidate)
+                    uri.scheme.equals("https", ignoreCase = true) &&
+                        !uri.host.isNullOrBlank() &&
+                        uri.userInfo == null
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            .distinct()
+            .map { url ->
+                val host = java.net.URI(url).host
+                    ?.lowercase()
+                    ?.removePrefix("www.")
+                    .orEmpty()
+
+                val title = when (host) {
+                    "kcca.go.ug" -> "KCCA"
+                    "loc.gov" -> "Library of Congress"
+                    "vicepresident.go.ug" -> "Government of Uganda"
+                    else -> host.ifBlank { "Original source" }
+                }
+
+                url to title
+            }
+            .toList()
+    }
+
+    // Remove only recognizable source-reference lines.
+    // Leave ordinary answer paragraphs and review dates intact.
+    val visibleAnswer = remember(messageText, sourceLinks) {
+        if (sourceLinks.isEmpty()) {
+            messageText
+        } else {
+            val sourceNames = setOf(
+                "",
+                "source",
+                "sources",
+                "kcca",
+                "kampala capital city authority",
+                "library of congress",
+                "government of uganda",
+                "office of the vice president",
+                "office of vice president",
+                "office of the vice president of uganda"
+            )
+
+            messageText.lines()
+                .filterNot { line ->
+                    val trimmed = line.trim()
+
+                    // M1F-I3C.120J: the compact chip already opens
+                    // this exact source. Avoid displaying its raw URL
+                    // a second time in directory answers.
+                    val duplicateSourceLink =
+                        trimmed.startsWith(
+                            "Source link:",
+                            ignoreCase = true
+                        ) &&
+                            sourceLinks.any { (url, _) ->
+                                trimmed.substringAfter(":").trim() == url
+                            }
+
+                    if (duplicateSourceLink) {
+                        true
+                    } else if (
+                        trimmed.equals("Sources:", ignoreCase = true) ||
+                        trimmed.equals("Sources", ignoreCase = true)
+                    ) {
+                        true
+                    } else {
+                        val hasUrl = sourceLinks.any { (url, _) ->
+                            line.contains(url)
+                        }
+
+                        if (!hasUrl) {
+                            false
+                        } else {
+                            val withoutUrls = sourceLinks.fold(line) {
+                                current, link ->
+                                current.replace(link.first, "")
+                            }
+
+                            val remaining = withoutUrls
+                                .trim()
+                                .trim(
+                                    ' ', '-', '*', ':', '•', '—',
+                                    '1', '2', '3', '.', ')', ']'
+                                )
+                                .trim()
+                                .lowercase()
+                                .removePrefix("source: ")
+                                .trim()
+
+                            remaining in sourceNames
+                        }
+                    }
+                }
+                .joinToString("\n")
+                .trim()
+        }
+    }
+
+    // M1F-I3C.119M: separate review metadata from answer text.
+    val reviewLine = remember(visibleAnswer) {
+        visibleAnswer.lines()
+            .firstOrNull { line ->
+                val clean = line.trim()
+                clean.startsWith("Knowledge reviewed:", ignoreCase = true) ||
+                    clean.startsWith("Source checked:", ignoreCase = true)
+            }
+            ?.trim()
+    }
+
+    val answerBody = remember(visibleAnswer, reviewLine) {
+        if (reviewLine == null) {
+            visibleAnswer
+        } else {
+            visibleAnswer.lines()
+                .filterNot { it.trim() == reviewLine }
+                .joinToString("\n")
+                .trim()
+        }
+    }
+
+    // M1F-I3C.119N.2: promote the verified history heading.
+    // All other answer types retain their existing formatting.
+    val firstAnswerLine = answerBody.lineSequence()
+        .firstOrNull()
+        ?.trim()
+        .orEmpty()
+
+    val hasHistoryHeading = firstAnswerLine
+        .removePrefix("#")
+        .trim()
+        .removeSurrounding("**")
+        .trim()
+        .removeSuffix(":")
+        .equals("Kampala History", ignoreCase = true)
+
+    val headingTitle = when {
+        hasHistoryHeading -> "Kampala History"
+        firstAnswerLine.equals(
+            "Kampala Places Directory",
+            ignoreCase = true
+        ) -> "Kampala Places Directory"
+        else -> null
+    }
+
+    val displayBody = remember(answerBody, headingTitle) {
+        if (headingTitle != null) {
+            answerBody.substringAfter("\n", "").trimStart()
+        } else {
+            answerBody
+        }
+    }
+
+    val formatted = remember(displayBody) {
+        JarvisMarkdownFormatter.format(displayBody)
+    }
+
+    val linkedText = remember(formatted, linkColor, headingTitle) {
+        buildAnnotatedString {
+            append(formatted)
+
+            if (headingTitle == "Kampala Places Directory") {
+                // M1F-I3C.120J: emphasize the first result name.
+                val firstLineEnd = formatted.text
+                    .indexOf('\n')
+                    .let { index ->
+                        if (index >= 0) index else formatted.text.length
+                    }
+
+                if (firstLineEnd > 0) {
+                    addStyle(
+                        style = SpanStyle(
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        start = 0,
+                        end = firstLineEnd
+                    )
+                }
+            }
+
+            urlPattern.findAll(formatted.text).forEach { match ->
+                val candidate = match.value.trimEnd(
+                    '.', ',', ';', ':', '!', '?', ')', ']'
+                )
+
+                val valid = try {
+                    val uri = java.net.URI(candidate)
+
+                    uri.scheme.equals("https", ignoreCase = true) &&
+                        !uri.host.isNullOrBlank() &&
+                        uri.userInfo == null
+                } catch (_: Exception) {
+                    false
+                }
+
+                if (valid) {
+                    val start = match.range.first
+                    val end = start + candidate.length
+
+                    addStringAnnotation(
+                        tag = "JARVIS_HTTPS_SOURCE",
+                        annotation = candidate,
+                        start = start,
+                        end = end
+                    )
+
+                    addStyle(
+                        style = SpanStyle(
+                            color = linkColor,
+                            textDecoration = TextDecoration.Underline
+                        ),
+                        start = start,
+                        end = end
+                    )
+                }
+            }
+        }
+    }
+
+    var textLayout by remember {
+        mutableStateOf<TextLayoutResult?>(null)
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        if (headingTitle != null) {
+            Text(
+                text = headingTitle,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (displayBody.isNotBlank()) {
+            Text(
+                text = linkedText,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerInput(linkedText, uriHandler, onLongClick) {
+                        detectTapGestures(
+                            onTap = { position ->
+                                val layout = textLayout
+
+                                if (layout != null) {
+                                    val index =
+                                        layout.getOffsetForPosition(position)
+
+                                    val match =
+                                        linkedText.getStringAnnotations(
+                                            tag = "JARVIS_HTTPS_SOURCE",
+                                            start = index,
+                                            end = index
+                                        ).firstOrNull()
+
+                                    if (match != null) {
+                                        try {
+                                            uriHandler.openUri(match.item)
+                                        } catch (_: Exception) {
+                                            // No browser available.
+                                        }
+                                    }
+                                }
+                            },
+                            onLongPress = { onLongClick() }
+                        )
+                    },
+                onTextLayout = { textLayout = it },
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    lineHeight = 22.sp
+                )
+            )
+        }
+
+        if (reviewLine != null) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = reviewLine,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        if (sourceLinks.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "SOURCES",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                sourceLinks.forEach { (url, title) ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.clickable {
+                            try {
+                                uriHandler.openUri(url)
+                            } catch (_: Exception) {
+                                // No browser available.
+                            }
+                        }
+                    ) {
+                        Text(
+                            text = "↗  $title",
+                            modifier = Modifier.padding(
+                                horizontal = 12.dp,
+                                vertical = 9.dp
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = linkColor
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 @Composable
 fun ConfidenceIndicator(level: ConfidenceLevel) {
     val (color, icon, label) = when (level) {
@@ -463,50 +939,80 @@ fun ChatInputArea(
     isListening: Boolean,
     onMicClicked: () -> Unit
 ) {
+    // M1F-I3C.119C: compact expandable composer, with voice preserved.
     Surface(
-        tonalElevation = 8.dp
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp
     ) {
         Row(
             modifier = Modifier
-                .padding(12.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            TextField(
+            OutlinedTextField(
                 value = text,
                 onValueChange = onTextChanged,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(24.dp)),
-                placeholder = { Text("Ask Jarvis anything...") },
-                colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
+                modifier = Modifier.weight(1f),
+                placeholder = {
+                    Text(
+                        "Ask about Kampala...",
+                        maxLines = 1
+                    )
+                },
+                minLines = 1,
+                maxLines = 4,
+                shape = RoundedCornerShape(24.dp),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Send
                 ),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSendClicked() }),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (text.isNotBlank()) onSendClicked()
+                    }
+                ),
                 trailingIcon = {
                     if (text.isNotBlank()) {
                         IconButton(onClick = onSendClicked) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Send message",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                 }
             )
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            FloatingActionButton(
-                onClick = onMicClicked,
+            Surface(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .clickable { onMicClicked() },
                 shape = CircleShape,
-                containerColor = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                contentColor = Color.White,
-                modifier = Modifier.size(56.dp)
+                color = if (isListening)
+                    MaterialTheme.colorScheme.error
+                else
+                    MaterialTheme.colorScheme.primary,
+                contentColor = if (isListening)
+                    MaterialTheme.colorScheme.onError
+                else
+                    MaterialTheme.colorScheme.onPrimary
             ) {
-                Icon(
-                    imageVector = if (isListening) Icons.Default.MicOff else Icons.Default.Mic,
-                    contentDescription = "Mic"
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isListening)
+                            Icons.Default.MicOff
+                        else
+                            Icons.Default.Mic,
+                        contentDescription = if (isListening)
+                            "Stop listening"
+                        else
+                            "Start listening",
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
     }

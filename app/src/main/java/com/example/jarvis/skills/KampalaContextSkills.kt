@@ -134,22 +134,10 @@ class MarketPriceSkill @Inject constructor() : JarvisSkill {
     }
 
     override suspend fun execute(command: String): String {
-        val params = try { JSONObject(command) } catch(e: Exception) { JSONObject() }
-        val item = params.optString("item", "all")
-
-        val prices = mapOf(
-            "matooke" to "30,000 - 45,000 UGX per bunch",
-            "sugar" to "5,500 UGX per kg",
-            "beef" to "15,000 UGX per kg",
-            "beans" to "4,500 UGX per kg"
-        )
-
-        return if (item != "all" && prices.containsKey(item.lowercase())) {
-            "The current price for $item in Nakasero/Kalerwe is approximately ${prices[item.lowercase()]}."
-        } else {
-            val priceList = prices.entries.joinToString("\n") { "${it.key}: ${it.value}" }
-            "Current market prices in Kampala:\n$priceList"
-        }
+        return "Live Kampala market prices are not connected yet. " +
+            "I cannot verify today's commodity prices, market availability, " +
+            "or individual seller offers. Please confirm current prices " +
+            "and quantities directly with the market or seller before buying."
     }
 }
 

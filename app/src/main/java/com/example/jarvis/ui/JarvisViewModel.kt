@@ -126,6 +126,12 @@ class JarvisViewModel @Inject constructor(
 
                     AssistantController.ResponseOrigin.DIRECTORY_NOTICE ->
                         MessageOrigin.DIRECTORY_NOTICE
+                    AssistantController.ResponseOrigin.CURATED_FACT,
+                    AssistantController.ResponseOrigin.KNOWLEDGE_RESULT ->
+                        MessageOrigin.KNOWLEDGE_RESULT
+
+                    AssistantController.ResponseOrigin.KNOWLEDGE_NOTICE ->
+                        MessageOrigin.KNOWLEDGE_NOTICE
 
                     AssistantController.ResponseOrigin.AI_RESPONSE ->
                         MessageOrigin.AI_RESPONSE
@@ -138,8 +144,8 @@ class JarvisViewModel @Inject constructor(
                     origin = messageOrigin
                 )
 
-                // Use voice-optimized text for TTS
-                voiceManager.speak(assistantResponse.voiceOptimizedText)
+                // Text-first behavior: do not speak replies automatically.
+                // Microphone input remains available through toggleListening().
 
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -164,7 +170,9 @@ class JarvisViewModel @Inject constructor(
 enum class MessageOrigin {
     AI_RESPONSE,
     DIRECTORY_RESULT,
-    DIRECTORY_NOTICE
+    DIRECTORY_NOTICE,
+    KNOWLEDGE_RESULT,
+    KNOWLEDGE_NOTICE
 }
 
 data class Message(

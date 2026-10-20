@@ -13,6 +13,12 @@ internal object PromptModePolicy {
         TOOL_AWARE
     }
 
+    // Social greetings require no device automation or tool contracts.
+    // Commands such as "send", "open", and "call" still use existing routing.
+    private val socialGreeting = Regex(
+        """^(?:(?:hi|hello|hey|good\s+morning|good\s+afternoon|good\s+evening)(?:\s+jarvis)?[!?.]*|(?:how\s+are\s+you|how\s+are\s+you\s+doing|how's\s+it\s+going|how\s+is\s+it\s+going)(?:\s+today)?[!?.]*)$""",
+        RegexOption.IGNORE_CASE
+    )
     private val conversationalStart = Regex(
         """^(?:please\s+)?(?:explain|describe|define|introduce yourself|what is|what are|what's|how does|how do|tell me about)\b""",
         RegexOption.IGNORE_CASE
@@ -27,6 +33,10 @@ internal object PromptModePolicy {
         val normalized = query.trim()
 
         if (normalized.isEmpty()) return Mode.TOOL_AWARE
+
+        if (socialGreeting.matches(normalized)) {
+            return Mode.CONVERSATION
+        }
 
         // Technical learning and code-writing requests are not
         // device commands merely because they contain action words.

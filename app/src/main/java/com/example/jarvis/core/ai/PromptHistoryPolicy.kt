@@ -9,7 +9,7 @@ package com.example.jarvis.core.ai
 internal object PromptHistoryPolicy {
 
     fun format(messages: List<Pair<String, String>>): String {
-        return messages.mapNotNull { (role, text) ->
+        return messages.takeLast(6).mapNotNull { (role, text) ->
             val normalizedRole = role.trim().lowercase()
             val normalizedText = text.trim()
 
@@ -25,6 +25,13 @@ internal object PromptHistoryPolicy {
             // Treat model protocol tokens as unsafe regardless of origin.
             // They should never be embedded inside a future prompt.
             if (!ModelOutputGuard.isUsable(normalizedText)) {
+                return@mapNotNull null
+            }
+
+            // Large assistant responses are not reliable prompt context.
+            // Keep persisted conversation history unchanged.
+            if (normalizedRole == "assistant" &&
+                normalizedText.length > 1200) {
                 return@mapNotNull null
             }
 

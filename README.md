@@ -136,3 +136,73 @@ Continued testing is needed for network interruptions and Render cold starts.
 ## Project Status
 
 Active development. This is not yet a production-ready city assistant.
+
+<!-- JARVIS_CDI44_STATUS_BEGIN -->
+## Current Development: Kampala Discovery and Evidence Reliability
+
+Jarvis Android is an experimental Kotlin and Jetpack Compose assistant
+being developed as a practical Kampala, Uganda daily-life assistant.
+
+The product vision includes local business and market discovery,
+restaurants, accommodation, transport, navigation, public services,
+tourism, and other useful city information for residents and visitors.
+
+### Implemented and Tested
+
+- Kampala Places discovery through a source-aware directory.
+- Kampala Knowledge responses with source information for supported topics.
+- Structured handling and coverage reporting for multi-part local requests.
+- Geographic factual safeguards to reduce unsupported place descriptions.
+- Model-output integrity and response-relevance checks.
+- Curated baseline facts for supported questions such as Kampala's location.
+- Separate response origins for directory results, knowledge results,
+  curated facts, notices, and unverified AI-generated answers.
+- Conservative, provenance-based confidence presentation.
+- Android device-action approval safeguards.
+- Offline JVM regression tests and Samsung physical-device testing.
+
+### Latest Checkpoint: CDI.4.4-R
+
+The CDI.4.4-R implementation introduces `CURATED_FACT` response provenance
+and integrates it through the assistant controller, confidence policy,
+and ViewModel.
+
+The complete offline debug JVM test suite passed on 20 October 2026:
+
+- Gradle result: BUILD SUCCESSFUL
+- Tasks: 34 (12 executed, 22 up-to-date)
+- Duration: 1 minute 50 seconds
+
+Samsung installation and physical-device verification of CDI.4.4-R
+remain pending.
+
+### Evidence and Confidence
+
+Directory and Knowledge results preserve their existing evidence origins.
+Reviewed baseline facts are classified separately from ordinary AI output.
+Medium Confidence is not a calibrated probability of correctness.
+
+Directory records do not establish live prices, opening hours, product
+inventory, booking availability, or real-time navigation.
+
+### Known Limitations
+
+- Kampala service-directory coverage remains incomplete.
+- Some geographic and historical requests lack verified reference data.
+- General on-device model answers may contain technical inaccuracies.
+- Source attribution for curated baseline facts needs further development.
+- Live ride ordering, transactions, and reservations require verified
+  integrations and explicit user consent.
+- The conversation interface requires further modernization.
+- Production readiness and clean-checkout reproducibility remain unverified.
+
+### Next Priorities
+
+1. Finish CDI.4.4-R Samsung acceptance testing.
+2. Improve general technical-answer accuracy and response relevance.
+3. Expand verified Kampala data and source provenance.
+4. Consolidate evidence resolution and improve confidence presentation.
+5. Modernize the conversational UI and practical service workflows.
+
+**Status:** Active research and development; not production-ready.
+<!-- JARVIS_CDI44_STATUS_END -->
