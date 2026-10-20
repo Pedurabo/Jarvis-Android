@@ -1,208 +1,77 @@
 # Jarvis Android
 
-Jarvis is an experimental Android assistant under active development, with a growing focus on helping people discover places and services in Kampala, Uganda.
+**Kampala-focused Android AI assistant | Active research and development**
 
-## Current Status
+Jarvis is a Kotlin and Jetpack Compose assistant for practical life in Kampala, Uganda, aimed at residents and visitors. It combines on-device conversational AI, sourced Places and Knowledge retrieval, multi-task request interpretation, and approval-gated Android actions.
 
-The Kampala Places Discovery feature is working end to end on a Samsung Android device. Its initial public directory contains two sourced destinations:
+## Current Status — 20 October 2026
 
-- Acacia Mall — Kisementi, Kampala
-- Gaddafi National Mosque — Old Kampala
+The project has moved beyond the original two-destination prototype. The latest **CDI.4.4-R** implementation passed the offline JVM suite (34 Gradle tasks, BUILD SUCCESSFUL). **CDI.4.4-R has not yet been installed and manually verified on Samsung.** Jarvis is experimental, not production-ready.
 
-Supported requests include "Find shopping places in Kisementi" and "Find a mosque in Old Kampala".
+## Work Completed
 
-These searches use the public Places API without paid AI generation. The directory is limited, and opening hours or current availability are not confirmed.
+### Kampala Places Discovery
+- Integrated a public Places API with keyword, area and category search and source-aware formatting.
+- Initial device-tested destinations included Acacia Mall in Kisementi and Gaddafi National Mosque in Old Kampala.
+- Later Samsung tests demonstrated sourced restaurant discovery in Kololo (Khana Khazana) and hotel discovery in Kampala.
+- Added broader natural-language destination handling, coverage notices and honest empty-results reporting.
+- Directory entries do not establish current inventory, prices, menus, operating hours or reservation availability.
 
-## Android Features and Architecture
+### Kampala Knowledge and Factual Reliability
+- Implemented sourced Knowledge retrieval for supported questions such as Kampala history.
+- Added factual and geographic boundaries to reduce fabricated local information.
+- Implemented a curated location fact for Kampala and Uganda.
+- Added response-relevance and output-integrity safeguards, including containment of irrelevant tool discussions and unsupported Kampala hills lists.
+- These safeguards target known failures; they are not comprehensive factual verification.
 
-The codebase includes:
+### Compositional Discovery Intelligence
+- Interpret multi-part requests involving markets, food, directions and ride services as separate tasks.
+- Report available evidence and unsupported tasks without pretending to complete bookings or navigation.
+- Product inventory, ride ordering and live directions still require verified integrations.
 
-- Kotlin and Jetpack Compose user interfaces
-- Assistant request routing and model integration components
-- Conversation and memory management
-- Local and cloud AI integration components
-- Skill registration and approval safeguards for device actions
-- Voice assistant components
-- Google Maps integration components
-- Response validation and Kotlin answer-safety policies
-- Kampala Places request classification, networking, and formatting
+### Evidence and Confidence
+- Distinguish Places results/notices, Knowledge results/notices, curated facts and AI-generated answers.
+- CDI.4.4-R introduced the CURATED_FACT origin through AssistantController, EvidenceConfidencePolicy and JarvisViewModel.
+- Confidence labels represent evidence categories, not calibrated probabilities of correctness.
+- General on-device model explanations still have known technical accuracy problems.
 
-Not all components are fully configured or independently verified for production use.
-
-## Technology Stack
-
-- Kotlin and Android SDK
-- Gradle and Android Studio
-- Jetpack Compose
-- Hilt dependency injection
-- Retrofit, OkHttp, and Gson
-- Kotlin coroutines
-- JVM unit tests
-- Node.js backend services
-
-## Kampala Places API
-
-Public URL:
-
-https://jarvis-kampala-preview.onrender.com
-
-Available endpoints:
-
-- GET /health — service health
-- GET /places — directory records
-- GET /places?q=mosque — keyword search
-- GET /places?category=shopping — category search
-- GET /places?area=Kisementi — area search
-
-The public API is deployed from this repository's separate hosting-preview branch. It does not expose the paid AI chat endpoint.
-
-The service runs on Render's free tier and may take longer to respond after inactivity.
-
-## Project Layout
-
-- app/src/main — Android application code and resources
-- app/src/test — JVM unit tests
-- app/src/androidTest — instrumented tests
-- backend — local Node.js backend sources
-- core — additional source components
-- gradle — Gradle wrapper and dependency configuration
-
-## Development
-
-Open the project in Android Studio with a compatible Android SDK and JDK.
-
-Windows PowerShell commands:
-
-Run JVM tests:
-
-    .\gradlew.bat :app:testDebugUnitTest
-
-Compile Android Kotlin:
-
-    .\gradlew.bat :app:compileDebugKotlin
-
-Install the debug application on an authorized connected device:
-
-    .\gradlew.bat :app:installDebug
-
-A fresh checkout may need additional configuration or local assets before it builds successfully.
-
-## Security and Local Configuration
-
-Never commit private credentials, signing keys, or environment secrets.
-
-The project excludes local configuration and artifacts such as:
-
-- local.properties
-- backend/.env
-- app/google-services.json
-- Signing keys and keystores
-- Build output, local logs, and backup files
-- Local AI model binaries pending distribution review
-
-The public Places API does not require paid OpenAI requests. Other assistant functionality may require separately configured services.
+### Android Foundation
+Kotlin/Compose UI, local model components, voice-related functionality, conversation handling, Hilt, coroutines, Retrofit/OkHttp, skill routing and user-approval safeguards for actions. Opening Android Settings was exercised on Samsung in earlier tests. Some components and integrations are not production-validated.
 
 ## Verification
 
-Completed development checks include:
+- Samsung device testing: Places searches, history retrieval, multi-intent handling, geographic safeguards and relevance checks.
+- CDI.4.4-R: offline JVM suite passed on 20 October 2026 (1m 50s, 34 Gradle tasks).
+- CDI.4.4-R Samsung installation and final provenance verification: pending.
+- Code checkpoint committed to main: 7818527341cdba1666fdae3c6207042918b9e7f7.
+- Clean-checkout reproducibility has not been independently verified.
 
-- Kotlin compilation and JVM unit tests
-- Live public Places API retrieval
-- Acacia Mall discovery on Android
-- Gaddafi National Mosque discovery on Android
-- Directory-result formatting and source display
-- Installation and successful searches using Places-specific network timeouts
+## Technology Stack
 
-Continued testing is needed for network interruptions and Render cold starts.
+Kotlin · Android SDK · Jetpack Compose · Hilt · Coroutines · Gradle · Retrofit · OkHttp · Gson · local inference · Node.js services · JVM tests.
 
-## Known Limitations
+## Kampala Preview API
 
-- Only two initial directory records
-- Limited natural-language place-search patterns
-- No verified live business hours or availability
-- Some external integrations require configuration
-- Cloud AI access may require separate billing
-- Clean-checkout reproducibility has not yet been established
+https://jarvis-kampala-preview.onrender.com
 
-## Roadmap
+Documented endpoints include GET /health and GET /places with keyword, category and area parameters. The free-tier service may cold-start after inactivity. Record counts and freshness must be confirmed against the running API rather than inferred from old milestones. Public Places search does not require paid AI generation.
 
-1. Improve natural-language discovery.
-2. Expand the sourced Kampala directory.
-3. Improve network resilience and offline handling.
-4. Improve source links and directory presentation.
-5. Add richer location and navigation features.
-6. Validate clean builds and prepare future releases.
+## Development
 
-## Project Status
+With a compatible Android SDK, JDK and required local configuration, run the offline JVM suite using the Gradle wrapper task app:testDebugUnitTest. Install the debug build separately with app:installDebug only after tests pass, then verify on the physical device.
 
-Active development. This is not yet a production-ready city assistant.
+Never commit local.properties, .env files, app/google-services.json, signing keys, credentials, local logs, backups, build artifacts or private model binaries.
 
-<!-- JARVIS_CDI44_STATUS_BEGIN -->
-## Current Development: Kampala Discovery and Evidence Reliability
+## Long-Term Product Vision
 
-Jarvis Android is an experimental Kotlin and Jetpack Compose assistant
-being developed as a practical Kampala, Uganda daily-life assistant.
+Practical Kampala discovery for food, markets, shopping, transport, hotels, short stays, tourism, government offices, embassies, NGOs, worship sites, residential locations and vetted household services. These are product goals; live reservations, ordering, payments, inventory confirmation and real-time navigation are not yet generally supported.
 
-The product vision includes local business and market discovery,
-restaurants, accommodation, transport, navigation, public services,
-tourism, and other useful city information for residents and visitors.
+## Next Priorities
 
-### Implemented and Tested
-
-- Kampala Places discovery through a source-aware directory.
-- Kampala Knowledge responses with source information for supported topics.
-- Structured handling and coverage reporting for multi-part local requests.
-- Geographic factual safeguards to reduce unsupported place descriptions.
-- Model-output integrity and response-relevance checks.
-- Curated baseline facts for supported questions such as Kampala's location.
-- Separate response origins for directory results, knowledge results,
-  curated facts, notices, and unverified AI-generated answers.
-- Conservative, provenance-based confidence presentation.
-- Android device-action approval safeguards.
-- Offline JVM regression tests and Samsung physical-device testing.
-
-### Latest Checkpoint: CDI.4.4-R
-
-The CDI.4.4-R implementation introduces `CURATED_FACT` response provenance
-and integrates it through the assistant controller, confidence policy,
-and ViewModel.
-
-The complete offline debug JVM test suite passed on 20 October 2026:
-
-- Gradle result: BUILD SUCCESSFUL
-- Tasks: 34 (12 executed, 22 up-to-date)
-- Duration: 1 minute 50 seconds
-
-Samsung installation and physical-device verification of CDI.4.4-R
-remain pending.
-
-### Evidence and Confidence
-
-Directory and Knowledge results preserve their existing evidence origins.
-Reviewed baseline facts are classified separately from ordinary AI output.
-Medium Confidence is not a calibrated probability of correctness.
-
-Directory records do not establish live prices, opening hours, product
-inventory, booking availability, or real-time navigation.
-
-### Known Limitations
-
-- Kampala service-directory coverage remains incomplete.
-- Some geographic and historical requests lack verified reference data.
-- General on-device model answers may contain technical inaccuracies.
-- Source attribution for curated baseline facts needs further development.
-- Live ride ordering, transactions, and reservations require verified
-  integrations and explicit user consent.
-- The conversation interface requires further modernization.
-- Production readiness and clean-checkout reproducibility remain unverified.
-
-### Next Priorities
-
-1. Finish CDI.4.4-R Samsung acceptance testing.
+1. Complete CDI.4.4-R Samsung provenance verification.
 2. Improve general technical-answer accuracy and response relevance.
-3. Expand verified Kampala data and source provenance.
-4. Consolidate evidence resolution and improve confidence presentation.
-5. Modernize the conversational UI and practical service workflows.
+3. Expand genuinely verified Kampala sources and directory coverage.
+4. Consolidate evidence resolution and confidence UI.
+5. Modernize the conversational interface and validate integrations.
 
-**Status:** Active research and development; not production-ready.
-<!-- JARVIS_CDI44_STATUS_END -->
+**Active development. Not a production-ready city or booking assistant.**
