@@ -11,9 +11,20 @@ import javax.inject.Singleton
 @Singleton
 class ModelRouter @Inject constructor(
     private val localLLM: LLMManager,
-    private val cloudLLM: CloudLLMManager
+    private val cloudLLM: CloudLLMManager,
+    private val gemmaClient: GemmaCompanionClient
 ) {
     private val TAG = "ModelRouter"
+
+    // Experimental opt-in. Disabled on every fresh process start.
+    @Volatile
+    private var gemmaEnabled = false
+
+    fun setGemmaEnabledForTesting(enabled: Boolean) {
+        gemmaEnabled = enabled
+    }
+
+    fun isGemmaEnabledForTesting(): Boolean = gemmaEnabled
 
     enum class Route { LOCAL, CLOUD }
 
@@ -60,7 +71,20 @@ class ModelRouter @Inject constructor(
     suspend fun generateResponse(prompt: String, route: Route): String {
         val effectiveRoute = CloudInferenceAvailabilityPolicy.effectiveRoute(route)
         return when (effectiveRoute) {
-            Route.LOCAL -> localLLM.generateResponse(prompt)
+            Route.LOCAL -> {
+                if (gemmaEnabled) {
+                    val gemmaResponse = gemmaClient.generate(prompt)
+
+                    if (!gemmaResponse.isNullOrBlank()) {
+                        gemmaResponse
+                    } else {
+                        Log.w(TAG, "Gemma unavailable; falling back to Llama.")
+                        localLLM.generateResponse(prompt)
+                    }
+                } else {
+                    localLLM.generateResponse(prompt)
+                }
+            }
             Route.CLOUD -> cloudLLM.generateResponse(prompt)
         }
     }

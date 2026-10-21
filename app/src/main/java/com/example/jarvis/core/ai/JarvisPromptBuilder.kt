@@ -140,6 +140,19 @@ class JarvisPromptBuilder {
             } else {
                 "$baseSystemPrompt\n\n$answerPrecisionGuidance"
             }
+        val technicalExplanationGuidance =
+            TechnicalExplanationGuidancePolicy.guidance(
+                query = query,
+                toolsAvailable = tools.isNotBlank()
+            )
+
+        val finalSystemPrompt =
+            if (technicalExplanationGuidance.isBlank()) {
+                effectiveSystemPrompt
+            } else {
+                "$effectiveSystemPrompt\n\n$technicalExplanationGuidance"
+            }
+
         val userContext = buildString {
             if (chatHistory.isNotBlank()) {
                 append("CONTEXT:\n")
@@ -157,11 +170,11 @@ class JarvisPromptBuilder {
         }
 
         return if (route == ModelRouter.Route.LOCAL) {
-            "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n$effectiveSystemPrompt<|eot_id|>" +
+            "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n$finalSystemPrompt<|eot_id|>" +
             "<|start_header_id|>user<|end_header_id|>\n\n$userContext<|eot_id|>" +
             "<|start_header_id|>assistant<|end_header_id|>\n\n"
         } else {
-            "$effectiveSystemPrompt\n\n$userContext"
+            "$finalSystemPrompt\n\n$userContext"
         }
     }
 }

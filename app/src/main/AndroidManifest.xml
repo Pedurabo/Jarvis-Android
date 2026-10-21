@@ -26,8 +26,14 @@
 
     <!-- Phone Automation (SMS and Calls) -->
 
+        <uses-permission
+        android:name="com.example.gemmacompanion.permission.BIND_COMPANION" />
+
+    <queries>
+        <package android:name="com.example.gemmacompanion" />
+    </queries>
     <application
-        android:name=".KampalaJarvisApp"
+        android:name=".GemmaIpcHarnessApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -39,7 +45,7 @@
         android:usesCleartextTraffic="true">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".GemmaIpcHarnessActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.Jarvis"

@@ -75,3 +75,79 @@ Practical Kampala discovery for food, markets, shopping, transport, hotels, shor
 5. Modernize the conversational interface and validate integrations.
 
 **Active development. Not a production-ready city or booking assistant.**
+
+## Experimental Jarvis: Kampala Life Assistant
+
+Jarvis is an Android assistant being developed to support everyday life
+in Kampala, Uganda, for residents and international visitors.
+
+The experimental version combines a modern Jetpack Compose conversation
+interface, local AI inference through Gemma, and an online Kampala places
+directory. This is an active development milestone, not a production release.
+
+### Current experimental architecture
+
+- Android application: `com.example.jarvis.gemmatest`
+- UI: Kotlin and Jetpack Compose
+- Inference client: `GemmaCompanionClient`
+- Model runtime: separately installed Gemma Companion application
+- Model: Gemma 4 E2B via LiteRT-LM and GPU
+- IPC: Android Binder/AIDL with signature-protected companion service
+- Kampala discovery: `KampalaExperimentalDiscovery`
+- Directory backend: `jarvis-kampala-preview.onrender.com`
+- Firebase: bypassed for the isolated experimental chat startup
+
+The original Jarvis application and its Firebase-dependent architecture
+remain separate from this experimental implementation.
+
+### Implemented and tested
+
+- Successful Gemma GPU inference on a physical Samsung Galaxy S20
+- Successful Jarvis-to-Gemma Binder IPC response generation
+- Multi-message conversation interface
+- Session conversation context for general Gemma prompts
+- Jarvis branding: **Your Kampala Life Assistant**
+- Modern dark-mode conversation layout
+- Rounded message composer and distinct conversation messages
+- Markdown response presentation
+- Numbered lists, headings, inline emphasis, and fenced code blocks
+- Functional code-block clipboard copying
+- Response-copy action and scroll-to-bottom UI controls
+- Experimental Kampala directory integration
+- Offline Gradle debug builds
+
+### Current limitations
+
+- The experimental app requires the separately installed Gemma Companion
+  with its privately imported model.
+- Model weights are not included in this repository.
+- The original full Jarvis assistant pipeline is not yet restored inside
+  the Firebase-independent experimental application.
+- Llama/Gemma fallback exists in experimental routing code but has not
+  been validated through the current experimental chat interface.
+- Kampala discovery depends on an online backend.
+- Directory intent classification and geographic relevance require work.
+- Unsupported landmark searches can still reach Gemma and produce
+  generic, ungrounded responses.
+- Live prices, inventory, reservations, and directions are not guaranteed.
+- Model-generated citations must not be treated as verified sources.
+- Keyboard handling, response copying, and scroll navigation require
+  further complete on-device acceptance testing.
+- The Markdown renderer is lightweight and does not implement all
+  CommonMark features.
+
+### Next priorities
+
+1. Complete remaining UI/UX interaction refinements.
+2. Strengthen Kampala local-first intent recognition and source provenance.
+3. Improve geographic filtering and reliable directory fallback notices.
+4. Validate Llama/Gemma switching and recovery behavior.
+5. Integrate broader Kampala Life services with verifiable information.
+
+### Development safety
+
+Keep private model files, signing keys, Firebase configuration files,
+local credentials, generated APKs, and build directories out of Git.
+
+The experimental implementation is maintained on a separate Git branch
+to protect the working production baseline.

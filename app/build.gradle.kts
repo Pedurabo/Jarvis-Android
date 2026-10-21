@@ -7,7 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.hilt.android)
-    alias(libs.plugins.google.services)
+// CDI.5.22-B isolated test: alias(libs.plugins.google.services)
 }
 
 android {
@@ -15,7 +15,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.jarvis"
+        applicationId = "com.example.jarvis.gemmatest"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -48,6 +48,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
+        aidl = true
         compose = true
         buildConfig = true
     }

@@ -126,7 +126,9 @@ class JarvisViewModel @Inject constructor(
 
                     AssistantController.ResponseOrigin.DIRECTORY_NOTICE ->
                         MessageOrigin.DIRECTORY_NOTICE
-                    AssistantController.ResponseOrigin.CURATED_FACT,
+                    AssistantController.ResponseOrigin.CURATED_FACT ->
+                        MessageOrigin.CURATED_FACT
+
                     AssistantController.ResponseOrigin.KNOWLEDGE_RESULT ->
                         MessageOrigin.KNOWLEDGE_RESULT
 
@@ -172,7 +174,8 @@ enum class MessageOrigin {
     DIRECTORY_RESULT,
     DIRECTORY_NOTICE,
     KNOWLEDGE_RESULT,
-    KNOWLEDGE_NOTICE
+    KNOWLEDGE_NOTICE,
+    CURATED_FACT
 }
 
 data class Message(

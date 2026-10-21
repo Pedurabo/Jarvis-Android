@@ -468,6 +468,14 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     when (message.origin) {
+                        MessageOrigin.CURATED_FACT -> {
+                            Text(
+                                text = "Curated Fact",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
                         MessageOrigin.KNOWLEDGE_RESULT -> {
                             Text(
                                 text = "Knowledge Result",
