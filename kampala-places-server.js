@@ -35,6 +35,15 @@ function loadCatalog() {
       }
     }
 
+    if (place.aliases !== undefined &&
+        (!Array.isArray(place.aliases) ||
+         place.aliases.some(alias =>
+           typeof alias !== "string" ||
+           !alias.trim() ||
+           alias.length > 100
+         ))) {
+      throw new Error("Invalid place aliases");
+    }
     if (ids.has(place.id)) {
       throw new Error("Duplicate place ID");
     }
@@ -98,6 +107,24 @@ for (const entry of knowledgeCatalog.entries) {
   }
 }
 
+function normalizeSearch(value) {
+  return String(value)
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function matchesSearch(value, query) {
+  const text = normalizeSearch(value);
+  const term = normalizeSearch(query);
+
+  if (!term) return false;
+
+  return (` ${text} `).includes(` ${term} `);
+}
 function sendJson(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -124,13 +151,20 @@ const server = http.createServer((req, res) => {
     }
 
     const results = catalog.places.filter(place => {
-      const haystack = [
-        place.name, place.category, place.area, place.address
-      ].join(" ").toLowerCase();
+      const fields = [
+        place.name,
+        place.category,
+        place.area,
+        place.address,
+        ...(place.aliases || [])
+      ];
 
-      return (!query || haystack.includes(query)) &&
-        (!area || place.area.toLowerCase() === area) &&
-        (!category || place.category.toLowerCase() === category);
+      return (
+        !query || fields.some(field => matchesSearch(field, query))
+      ) &&
+        (!area || normalizeSearch(place.area) === normalizeSearch(area)) &&
+        (!category ||
+          normalizeSearch(place.category) === normalizeSearch(category));
     });
 
     return sendJson(res, 200, {

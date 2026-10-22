@@ -18,7 +18,11 @@
                        "address":  "Old Kampala Road, Kampala",
                        "sourceUrl":  "https://visitkampala.kcca.go.ug/business_details/old-kampala-national-mosque",
                        "category":  "tourism",
-                       "area":  "Old Kampala"
+                       "area":  "Old Kampala",
+                       "aliases":  [
+                                       "Old Kampala Mosque",
+                                       "Old Kampala National Mosque"
+                                   ]
                    },
                    {
                        "id":  "kampala-serena-hotel",
