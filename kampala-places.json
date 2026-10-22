@@ -95,6 +95,34 @@
                        "address":  "Salaama Road, Kiruddu, Makindye Division, Kampala",
                        "sourceUrl":  "https://www.kiruddu.hosp.go.ug/department/view/emergency-services",
                        "verifiedAt":  "2026-10-19"
+                   },
+                   {
+                       "id":  "high-court-uganda-kampala",
+                       "name":  "High Court of Uganda",
+                       "category":  "government",
+                       "area":  "Kampala",
+                       "address":  "Plot 2, The Square, Kampala, Uganda",
+                       "sourceUrl":  "https://www.judiciary.go.ug/data/smenu/9/High%2BCourt.html",
+                       "verifiedAt":  "2026-10-22",
+                       "aliases":  [
+                                       "High Court",
+                                       "High Court Kampala",
+                                       "Kampala High Court"
+                                   ]
+                   },
+                   {
+                       "id":  "bank-of-uganda-head-office",
+                       "name":  "Bank of Uganda",
+                       "category":  "government",
+                       "area":  "Kampala",
+                       "address":  "Plot 37/45 Kampala Road, Kampala, Uganda",
+                       "sourceUrl":  "https://www.bou.or.ug/",
+                       "verifiedAt":  "2026-10-22",
+                       "aliases":  [
+                                       "BOU",
+                                       "Bank of Uganda Kampala",
+                                       "Bank of Uganda Head Office"
+                                   ]
                    }
                ],
     "city":  "Kampala"
