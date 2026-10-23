@@ -305,3 +305,31 @@ general performance benchmarks.
 2. Improve user-visible error handling without exposing internals.
 3. Verify cancellation and recovery behavior during repeated requests.
 4. Preserve stable Kampala routing and persistent chat history.
+
+## CDI.5.47 - Inference Recovery
+
+### Implemented
+- More actionable messages for failed Gemma inference.
+- Manual Retry action for the latest failed assistant response.
+- Retry reuses the original user question without adding a duplicate.
+- Previous chat-history, Clear chat and Kampala discovery behavior retained.
+- No automatic model restart or automatic retry.
+- Temporary controlled-test fixture absent from final source.
+
+### Samsung S20 verification
+- Normal Gemma inference: PASS
+- Successful response controls: PASS
+- History survives reopening: PASS
+- Clear chat cancellation: PASS
+- Clean offline build and installation: PASS
+- Actual failure-to-Retry-to-success interaction: NOT VERIFIED
+
+### Remaining limitations
+- Intermittent inference failures require further reliability work.
+- The Retry failure path must not be described as device-verified.
+- The experimental application is not yet a complete Kampala Life MVP.
+
+### Product priority after CDI.5.47
+Prioritize practical Kampala discovery, broader verified coverage,
+useful place details, source presentation, map handoff and complete
+end-to-end user journeys rather than further Retry simulations.

@@ -91,7 +91,7 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
                     generating = generating,
                     onInputChange = { input = it },
                     onSend = { sendMessage() },
-                    onClearConversation = { clearConversation() }
+                    onClearConversation = { clearConversation() }, onRetryFailed = { retryLastFailed() }
                 )
             }
         }
@@ -113,6 +113,38 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
         )
         saveHistory()
 
+        startGeneration(prompt)
+    }
+
+    private fun retryLastFailed() {
+        if (generating || messages.size < 2) return
+
+        val failure = messages.last()
+        val originalQuestion = messages[messages.lastIndex - 1]
+
+        if (failure.isUser || !originalQuestion.isUser) return
+
+        val retryable =
+            failure.text.startsWith("Gemma couldn't complete") ||
+            failure.text.startsWith("Gemma encountered a problem") ||
+            failure.text.startsWith("Gemma is unavailable.") ||
+            failure.text.startsWith("Inference error:")
+
+        if (!retryable) return
+
+        val prompt = originalQuestion.text.trim()
+        if (prompt.isEmpty()) return
+
+        // Preserve the user's original message.
+        // Remove only the failed assistant response.
+        messages.removeAt(messages.lastIndex)
+        saveHistory()
+
+        startGeneration(prompt)
+    }
+
+    private fun startGeneration(prompt: String) {
+        generating = true
         val requestEpoch = conversationEpoch
         generationJob = scope.launch {
             try {
@@ -121,6 +153,8 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
                     .filterNot { entry ->
                         !entry.isUser && (
                             entry.text.startsWith("Inference error:") ||
+                            entry.text.startsWith("Gemma encountered a problem") ||
+                            entry.text.startsWith("Gemma couldn't complete") ||
                             entry.text.startsWith("Gemma is unavailable.")
                         )
                     }
@@ -212,7 +246,11 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
                     messages.add(
                         ExperimentalChatMessage(
                             text = if (answer.isNullOrBlank()) {
-                                "Gemma is unavailable. No usable response was returned."
+                                "Gemma couldn't complete that response. " +
+                            "Your question is still saved. " +
+                            "Please send it again to retry. " +
+                            "If this continues, check that the " +
+                            "Gemma Companion is available."
                             } else {
                                 answer
                             },
@@ -227,8 +265,11 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
                 if (requestEpoch == conversationEpoch) {
                     messages.add(
                         ExperimentalChatMessage(
-                            text = "Inference error: " +
-                                (e.message ?: e.javaClass.simpleName),
+                            text = "Gemma encountered a problem while processing " +
+                            "that request. Your question is still saved. " +
+                            "Please send it again to retry. " +
+                            "If the issue continues, check the " +
+                            "JarvisGemmaIPC diagnostic logs.",
                             isUser = false
                         )
                     )

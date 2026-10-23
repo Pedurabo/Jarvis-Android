@@ -77,7 +77,7 @@ fun ExperimentalGemmaChat(
     generating: Boolean,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
-    onClearConversation: () -> Unit
+    onClearConversation: () -> Unit, onRetryFailed: () -> Unit
 ) {
     var showClearConfirmation by remember { mutableStateOf(false) }
     val scrollState = rememberLazyListState()
@@ -240,7 +240,7 @@ fun ExperimentalGemmaChat(
                     }
                 }
 
-                itemsIndexed(messages) { _, message ->
+                itemsIndexed(messages) { index, message ->
                     if (message.isUser) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -297,8 +297,25 @@ fun ExperimentalGemmaChat(
                                     color = MaterialTheme.colorScheme.primary
                                 )
 
-                                SelectionContainer {
+                                                                SelectionContainer {
                                     JarvisMarkdownContent(message.text)
+                                }
+
+                                if (
+                                    index == messages.lastIndex &&
+                                    !generating &&
+                                    (
+                                        message.text.startsWith("Gemma couldn't complete") ||
+                                        message.text.startsWith("Gemma encountered a problem") ||
+                                        message.text.startsWith("Gemma is unavailable.") ||
+                                        message.text.startsWith("Inference error:")
+                                    )
+                                ) {
+                                    TextButton(
+                                        onClick = onRetryFailed
+                                    ) {
+                                        Text("Retry")
+                                    }
                                 }
                                 TextButton(
                                     onClick = {
