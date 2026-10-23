@@ -333,3 +333,35 @@ general performance benchmarks.
 Prioritize practical Kampala discovery, broader verified coverage,
 useful place details, source presentation, map handoff and complete
 end-to-end user journeys rather than further Retry simulations.
+
+## CDI.5.48 - Kampala Place Actions
+
+### Implemented
+- Directory-backed response provenance in experimental chat messages.
+- Backward-compatible persistence of directory provenance.
+- View source action for sourced directory listings.
+- Open in Maps action using the directory address.
+- Corrected Google Maps search URL with trailing slash.
+- Android external-link handling without booking or payment.
+
+### Samsung Galaxy S20 verification
+- Offline Android build: PASS
+- APK installation and launch: PASS
+- Bank of Uganda listing and address: PASS
+- Source URL and verification date visible: PASS
+- View source button visible: PASS
+- Open in Maps button visible: PASS
+- Initial Maps URL: FAILED (HTTP 404)
+- Corrected Google Maps URL: PASS
+- View source website opening: NOT YET VERIFIED
+- Conversation restoration after external handoff: NOT YET VERIFIED
+
+### Limitations
+- Maps searches an address; exact destination and routing are not guaranteed.
+- Kampala directory coverage remains limited.
+- Current opening hours, availability and prices are not verified.
+- Gemma failure-to-Retry recovery remains unverified.
+
+### Product priority
+Expand verified Kampala coverage and validate practical
+search, source, contact and navigation workflows.

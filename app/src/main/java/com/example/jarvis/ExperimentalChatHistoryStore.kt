@@ -62,7 +62,7 @@ internal class ExperimentalChatHistoryStore(context: Context) {
                 restored.add(
                     ExperimentalChatMessage(
                         text = text,
-                        isUser = entry.getBoolean("isUser")
+                        isUser = entry.getBoolean("isUser"),
                     )
                 )
             }
@@ -84,6 +84,7 @@ internal class ExperimentalChatHistoryStore(context: Context) {
                 JSONObject()
                     .put("text", message.text.take(MAX_MESSAGE_LENGTH))
                     .put("isUser", message.isUser)
+                    .put("isDirectoryResult", message.isDirectoryResult)
             )
         }
 

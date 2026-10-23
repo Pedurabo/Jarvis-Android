@@ -1,6 +1,8 @@
 package com.example.jarvis
 
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
@@ -50,6 +52,30 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
     private var conversationEpoch = 0L
     private var generationJob: Job? = null
 
+    private fun openExternalUrl(url: String) {
+        try {
+            val uri = Uri.parse(url)
+
+            if (uri.scheme != "https" || uri.host.isNullOrBlank()) {
+                throw IllegalArgumentException("Invalid external link")
+            }
+
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
+        } catch (error: Exception) {
+            android.util.Log.w(
+                "JarvisPlaceActions",
+                "Could not open destination",
+                error
+            )
+
+            android.widget.Toast.makeText(
+                this,
+                "Unable to open this link.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     private fun clearConversation() {
         // Commit the empty history first. If storage fails,
         // preserve the visible conversation instead of silently
@@ -91,7 +117,8 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
                     generating = generating,
                     onInputChange = { input = it },
                     onSend = { sendMessage() },
-                    onClearConversation = { clearConversation() }, onRetryFailed = { retryLastFailed() }
+                    onClearConversation = { clearConversation() }, onRetryFailed = { retryLastFailed() },
+                    onOpenExternalUrl = { openExternalUrl(it) }
                 )
             }
         }
@@ -254,7 +281,11 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
                             } else {
                                 answer
                             },
-                            isUser = false
+                            isUser = false,
+                            isDirectoryResult =
+                                directoryAnswer?.startsWith(
+                                    "Kampala Places Directory"
+                                ) == true
                         )
                     )
                     saveHistory()

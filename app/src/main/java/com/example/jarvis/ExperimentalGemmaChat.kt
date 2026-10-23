@@ -67,7 +67,8 @@ import androidx.compose.runtime.setValue
 
 data class ExperimentalChatMessage(
     val text: String,
-    val isUser: Boolean
+    val isUser: Boolean,
+    val isDirectoryResult: Boolean = false
 )
 
 @Composable
@@ -77,7 +78,8 @@ fun ExperimentalGemmaChat(
     generating: Boolean,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
-    onClearConversation: () -> Unit, onRetryFailed: () -> Unit
+    onClearConversation: () -> Unit, onRetryFailed: () -> Unit,
+    onOpenExternalUrl: (String) -> Unit
 ) {
     var showClearConfirmation by remember { mutableStateOf(false) }
     val scrollState = rememberLazyListState()
@@ -299,6 +301,48 @@ fun ExperimentalGemmaChat(
 
                                                                 SelectionContainer {
                                     JarvisMarkdownContent(message.text)
+                                }
+
+                                if (message.isDirectoryResult) {
+                                    val actions = remember(message.text) {
+                                        KampalaPlaceActions.parse(message.text)
+                                    }
+
+                                    actions.forEachIndexed { actionIndex, action ->
+                                        Column {
+                                            if (actions.size > 1) {
+                                                Text(
+                                                    text = "Place ${actionIndex + 1}",
+                                                    style = MaterialTheme.typography.labelMedium
+                                                )
+                                            }
+
+                                            Row(
+                                                horizontalArrangement =
+                                                    Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                TextButton(
+                                                    onClick = {
+                                                        onOpenExternalUrl(
+                                                            action.sourceUrl
+                                                        )
+                                                    }
+                                                ) {
+                                                    Text("View source")
+                                                }
+
+                                                TextButton(
+                                                    onClick = {
+                                                        onOpenExternalUrl(
+                                                            action.mapsUrl
+                                                        )
+                                                    }
+                                                ) {
+                                                    Text("Open in Maps")
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
 
                                 if (
