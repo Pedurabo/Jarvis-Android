@@ -123,6 +123,35 @@
                                        "Bank of Uganda Kampala",
                                        "Bank of Uganda Head Office"
                                    ]
+                   },
+                   {
+                       "id":  "uganda-wildlife-authority-headquarters",
+                       "name":  "Uganda Wildlife Authority",
+                       "category":  "government",
+                       "area":  "Kamwokya",
+                       "address":  "Plot 7 Kira Road, Kamwokya, Kampala, Uganda",
+                       "sourceUrl":  "https://ugandawildlife.org/contact/",
+                       "verifiedAt":  "2026-10-23",
+                       "aliases":  [
+                                       "UWA",
+                                       "UWA Headquarters",
+                                       "Uganda Wildlife Authority Headquarters"
+                                   ]
+                   },
+                   {
+                       "id":  "uganda-national-theatre",
+                       "name":  "National Theatre",
+                       "category":  "tourism",
+                       "area":  "Central Kampala",
+                       "address":  "Plot 2, 4 \u0026 6 De Winton Street, Kampala, Uganda",
+                       "sourceUrl":  "https://visitkampala.kcca.go.ug/business_details/national-theatre-1",
+                       "verifiedAt":  "2026-10-23",
+                       "aliases":  [
+                                       "Uganda National Theatre",
+                                       "National Theatre Kampala",
+                                       "Uganda National Cultural Centre",
+                                       "UNCC"
+                                   ]
                    }
                ],
     "city":  "Kampala"
