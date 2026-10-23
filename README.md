@@ -204,3 +204,49 @@ and Activity relaunch.
 2. Give genuine directory results clearer, tappable source presentation.
 3. Expand the verified Kampala directory.
 4. Introduce multiple conversations and history management when needed.
+
+## CDI.5.45 - Kampala Local-Intent Reliability
+
+### Implementation
+
+- Added a conservative fallback for Kampala-local requests after the
+  existing discovery classifier returns Pass.
+- Named local destination requests are routed to the existing
+  source-grounded Kampala Places repository.
+- Unverified directory results are not replaced with invented addresses.
+- SafeBoda ride requests receive an explicit booking-limitation notice.
+- No ride is booked and no payment or external transaction is initiated.
+- Ordinary general-purpose prompts continue to use the Gemma Companion.
+
+### Samsung S20 acceptance tests
+
+- Bank of Uganda directory lookup: PASS
+- Ministry of Finance verification safeguard: PASS
+- Marriott Hotel Kampala verification safeguard: PASS
+- SafeBoda booking-limitation notice: PASS
+- General Kotlin coroutine explanation: PASS
+- Follow-up general inference after minimizing Jarvis: PASS
+
+Previously verified CDI.5.44 chat-history persistence and Clear chat
+functionality remain in the experimental application.
+
+### Known limitations
+
+- The local-intent safeguard is conservative and does not yet cover
+  every conversational variation or every local service.
+- Directory results depend on the available catalog and live service.
+- Directory information must not be presented as live booking,
+  navigation, or payment confirmation.
+- One general Gemma inference attempt returned no usable response
+  during testing. Later attempts succeeded, including a subsequent
+  short Kotlin explanation and follow-up questions.
+- The cause of that intermittent failure remains undetermined.
+- This implementation remains experimental and is not a production
+  Jarvis release.
+
+### Next priorities
+
+1. Improve inference diagnostics for intermittent Binder/model failures.
+2. Expand natural-language local-intent test coverage.
+3. Improve directory source-link presentation.
+4. Continue verified Kampala catalog expansion.

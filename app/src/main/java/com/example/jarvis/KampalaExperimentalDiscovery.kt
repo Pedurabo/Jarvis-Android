@@ -57,7 +57,7 @@ class KampalaExperimentalDiscovery {
                 decision.message
 
             KampalaDiscoveryIntelligence.Decision.Pass ->
-                null
+                KampalaLocalIntentGuard.answerOrNull(message, repository)
         }
     }
 }
