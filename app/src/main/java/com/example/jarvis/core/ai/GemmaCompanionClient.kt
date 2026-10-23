@@ -7,6 +7,8 @@ import android.content.ServiceConnection
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import com.example.gemmaruntimelab.ipc.ICompanionProbe
 import com.example.gemmaruntimelab.ipc.IInferenceCallback
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -41,20 +43,46 @@ class GemmaCompanionClient @Inject constructor(
             "com.example.gemmaruntimelab.CompanionProbeService"
 
         private const val REQUEST_TIMEOUT_MS = 90_000L
+        private const val TAG = "JarvisGemmaIPC"
     }
 
     suspend fun generate(prompt: String): String? {
         if (prompt.isBlank() || prompt.length > 8000) {
+            Log.w(TAG, "request_rejected: invalid_prompt_length")
             return null
         }
 
+        Log.i(TAG, "request_started")
+
         return try {
-            withTimeoutOrNull(REQUEST_TIMEOUT_MS) {
-                withContext(Dispatchers.Main.immediate) {
+            var completedBeforeTimeout = false
+
+            val result = withTimeoutOrNull(REQUEST_TIMEOUT_MS) {
+                val answer = withContext(Dispatchers.Main.immediate) {
                     requestFromCompanion(prompt)
                 }
+                completedBeforeTimeout = true
+                answer
             }
-        } catch (_: Exception) {
+
+            if (!completedBeforeTimeout) {
+                Log.w(TAG, "request_timeout")
+            } else if (result.isNullOrBlank()) {
+                Log.w(TAG, "request_completed_without_answer")
+            } else {
+                Log.i(TAG, "request_success")
+            }
+
+            result
+        } catch (cancelled: CancellationException) {
+            Log.i(TAG, "request_cancelled")
+            throw cancelled
+        } catch (error: Exception) {
+            Log.e(
+                TAG,
+                "request_exception: ${error.javaClass.simpleName}",
+                error
+            )
             null
         }
     }
@@ -111,12 +139,17 @@ class GemmaCompanionClient @Inject constructor(
                 val remote = ICompanionProbe.Stub.asInterface(binder)
 
                 try {
+                    Log.i(TAG, "binder_connected")
+
                     val readiness = remote.getModelStatus()
 
                     if (readiness != "MODEL_FILE_READY") {
+                        Log.w(TAG, "model_not_ready")
                         finish(null)
                         return
                     }
+
+                    Log.i(TAG, "model_file_ready")
 
                     remote.initializeModel(
                         object : IInferenceCallback.Stub() {
@@ -129,9 +162,15 @@ class GemmaCompanionClient @Inject constructor(
                                         result == "MODEL_ALREADY_INITIALIZED"
 
                                     if (!initialized) {
+                                        Log.w(
+                                            TAG,
+                                            "model_initialization_failed"
+                                        )
                                         finish(null)
                                         return@onMain
                                     }
+
+                                    Log.i(TAG, "model_initialized")
 
                                     try {
                                         remote.generateResponse(
@@ -154,19 +193,43 @@ class GemmaCompanionClient @Inject constructor(
                                                                     it.isNotEmpty()
                                                                 }
 
+                                                        if (answer == null) {
+                                                            Log.w(
+                                                                TAG,
+                                                                "generation_empty_or_invalid"
+                                                            )
+                                                        } else {
+                                                            Log.i(
+                                                                TAG,
+                                                                "generation_response_received"
+                                                            )
+                                                        }
+
                                                         finish(answer)
                                                     }
                                                 }
                                             }
                                         )
-                                    } catch (_: Exception) {
+                                    } catch (error: Exception) {
+                                        Log.e(
+                                            TAG,
+                                            "generation_call_exception: " +
+                                                error.javaClass.simpleName,
+                                            error
+                                        )
                                         finish(null)
                                     }
                                 }
                             }
                         }
                     )
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    Log.e(
+                        TAG,
+                        "model_setup_exception: " +
+                            error.javaClass.simpleName,
+                        error
+                    )
                     finish(null)
                 }
             }
@@ -174,14 +237,17 @@ class GemmaCompanionClient @Inject constructor(
             override fun onServiceDisconnected(
                 name: ComponentName
             ) {
+                Log.w(TAG, "binder_disconnected")
                 finish(null)
             }
 
             override fun onBindingDied(name: ComponentName) {
+                Log.w(TAG, "binder_died")
                 finish(null)
             }
 
             override fun onNullBinding(name: ComponentName) {
+                Log.w(TAG, "binder_null_binding")
                 finish(null)
             }
         }
@@ -203,9 +269,18 @@ class GemmaCompanionClient @Inject constructor(
             )
 
             if (!bound) {
+                Log.w(TAG, "binder_bind_failed")
                 finish(null)
+            } else {
+                Log.i(TAG, "binder_bind_requested")
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Log.e(
+                TAG,
+                "binder_bind_exception: " +
+                    error.javaClass.simpleName,
+                error
+            )
             finish(null)
         }
     }

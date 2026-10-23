@@ -250,3 +250,58 @@ functionality remain in the experimental application.
 2. Expand natural-language local-intent test coverage.
 3. Improve directory source-link presentation.
 4. Continue verified Kampala catalog expansion.
+
+## CDI.5.46 - Gemma IPC Diagnostics
+
+### Implementation
+
+- Added stage-specific diagnostic logging to the experimental
+  Gemma Companion IPC client.
+- Logs distinguish service binding, model readiness, initialization,
+  generation callbacks, request cancellation, errors, and timeouts.
+- Technical status messages do not include the user prompt,
+  generated answer, or model contents.
+- The existing 90-second request timeout remains unchanged.
+- Companion model configuration and LiteRT GPU setup are unchanged.
+- Kampala routing, persistent history, and Clear chat are unchanged.
+
+### Samsung S20 verification
+
+CDI.5.46-B completed successfully on October 23, 2026.
+
+Observed IPC log sequence:
+
+- 16:50:34.489 - request_started
+- 16:50:34.497 - binder_bind_requested
+- 16:50:34.833 - binder_connected
+- 16:50:34.834 - model_file_ready
+- 16:50:43.211 - model_initialized
+- 16:50:48.345 - generation_response_received
+- 16:50:48.351 - request_success
+
+Approximate observed durations:
+
+- Total request: 13.86 seconds
+- Model initialization: 8.38 seconds
+- Response generation: 5.13 seconds
+
+These measurements describe one successful device test, not
+general performance benchmarks.
+
+### Known limitations
+
+- An earlier inference request returned no usable response.
+  Subsequent requests completed successfully.
+- The original intermittent failure has not been reproduced
+  with diagnostic logging enabled, so its cause is unknown.
+- IPC failures still return a generic user-visible message.
+  The new logs provide technical information for debugging.
+- This remains an experimental integration, not a
+  production Jarvis release.
+
+### Next priorities
+
+1. Reproduce and classify intermittent inference failures.
+2. Improve user-visible error handling without exposing internals.
+3. Verify cancellation and recovery behavior during repeated requests.
+4. Preserve stable Kampala routing and persistent chat history.
