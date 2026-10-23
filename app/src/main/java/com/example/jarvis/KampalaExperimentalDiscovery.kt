@@ -40,19 +40,24 @@ class KampalaExperimentalDiscovery {
      * Directory failures are returned as notices, not forwarded to Gemma.
      */
     suspend fun answerOrNull(message: String): String? {
-        val decision = KampalaDiscoveryIntelligence.decide(message)
+        return when (val decision = KampalaDiscoveryIntelligence.decide(message)) {
+            is KampalaDiscoveryIntelligence.Decision.Search -> {
+                val request = decision.request
 
-        val request =
-            (decision as? KampalaDiscoveryIntelligence.Decision.Search)
-                ?.request
-                ?: return null
+                val result = repository.search(
+                    query = request.query,
+                    area = request.area,
+                    category = request.category
+                )
 
-        val result = repository.search(
-            query = request.query,
-            area = request.area,
-            category = request.category
-        )
+                KampalaPlacesResultPolicy.format(request, result)
+            }
 
-        return KampalaPlacesResultPolicy.format(request, result)
+            is KampalaDiscoveryIntelligence.Decision.Notice ->
+                decision.message
+
+            KampalaDiscoveryIntelligence.Decision.Pass ->
+                null
+        }
     }
 }

@@ -76,14 +76,36 @@ object KampalaNamedDestinationRoute {
             return null
         }
 
+        // Canonical names are search terms only, not verified locations.
+        // The Places repository must supply any address or place details.
+        val canonicalDestination = when {
+            Regex(
+                """^state house(?:\s+(?:in\s+)?(?:nakasero|kampala))?$"""
+            ).matches(normalized) ->
+                "State House"
+
+            Regex(
+                """^high court(?:\s+(?:in\s+)?kampala)?$"""
+            ).matches(normalized) ->
+                "High Court"
+
+            Regex(
+                """^bank of uganda(?:\s+(?:in\s+)?kampala)?$"""
+            ).matches(normalized) ->
+                "Bank of Uganda"
+
+            else -> null
+        }
+
         val recognizedName =
-            normalized == "kingdom kampala" ||
+            canonicalDestination != null ||
+                normalized == "kingdom kampala" ||
                 namedEnding.containsMatchIn(candidate)
 
         if (!recognizedName) return null
 
         return KampalaPlacesQueryRoute.SearchRequest(
-            query = candidate
+            query = canonicalDestination ?: candidate
         )
     }
 

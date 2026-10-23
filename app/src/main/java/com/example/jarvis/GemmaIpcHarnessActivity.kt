@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 class GemmaIpcHarnessActivity : ComponentActivity() {
 
@@ -27,11 +28,60 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
     }
 
     private val messages = mutableStateListOf<ExperimentalChatMessage>()
+
+    private val historyStore by lazy {
+        ExperimentalChatHistoryStore(applicationContext)
+    }
+
+    private fun saveHistory() {
+        try {
+            historyStore.save(messages.toList())
+        } catch (error: Exception) {
+            android.util.Log.e(
+                "JarvisChatHistory",
+                "Unable to save conversation",
+                error
+            )
+        }
+    }
+
     private var input by mutableStateOf("")
     private var generating by mutableStateOf(false)
+    private var conversationEpoch = 0L
+    private var generationJob: Job? = null
+
+    private fun clearConversation() {
+        // Commit the empty history first. If storage fails,
+        // preserve the visible conversation instead of silently
+        // claiming it was deleted.
+        try {
+            historyStore.save(emptyList())
+        } catch (error: Exception) {
+            android.util.Log.e(
+                "JarvisChatHistory",
+                "Could not clear saved conversation",
+                error
+            )
+            android.widget.Toast.makeText(
+                this,
+                "Unable to clear saved history.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        conversationEpoch++
+        generationJob?.cancel()
+        generationJob = null
+        messages.clear()
+        input = ""
+        generating = false
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        messages.addAll(historyStore.load())
 
         setContent {
             JarvisTheme {
@@ -40,7 +90,8 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
                     input = input,
                     generating = generating,
                     onInputChange = { input = it },
-                    onSend = { sendMessage() }
+                    onSend = { sendMessage() },
+                    onClearConversation = { clearConversation() }
                 )
             }
         }
@@ -60,8 +111,10 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
                 isUser = true
             )
         )
+        saveHistory()
 
-        scope.launch {
+        val requestEpoch = conversationEpoch
+        generationJob = scope.launch {
             try {
                 val previousTurns = messages
                     .dropLast(1)
@@ -104,31 +157,88 @@ class GemmaIpcHarnessActivity : ComponentActivity() {
                     append("Assistant:")
                 }
 
-                val answer = kampalaDiscovery.answerOrNull(prompt)
-                    ?: client.generate(contextualPrompt)
+                val directoryAnswer =
+                    kampalaDiscovery.answerOrNull(prompt)
 
-                messages.add(
-                    ExperimentalChatMessage(
-                        text = if (answer.isNullOrBlank()) {
-                            "Gemma is unavailable. No usable response was returned."
-                        } else {
-                            answer
-                        },
-                        isUser = false
+                val answer = if (directoryAnswer != null) {
+                    directoryAnswer
+                } else {
+                    val generated = client.generate(contextualPrompt)
+
+                    val suspiciousDirectoryClaim = generated
+                        ?.let { text ->
+                            text.contains(
+                                "Kampala Places Directory",
+                                ignoreCase = true
+                            ) ||
+                            text.contains(
+                                "Published directory source",
+                                ignoreCase = true
+                            ) ||
+                            text.contains(
+                                "Please provide the source link",
+                                ignoreCase = true
+                            ) ||
+                            text.contains(
+                                "Please provide the specific address",
+                                ignoreCase = true
+                            ) ||
+                            (
+                                text.contains(
+                                    "Source checked:",
+                                    ignoreCase = true
+                                ) &&
+                                text.contains(
+                                    "Source link:",
+                                    ignoreCase = true
+                                )
+                            )
+                        } ?: false
+
+                    if (suspiciousDirectoryClaim) {
+                        "I couldn't verify that local listing through " +
+                            "my Kampala directory. The AI-generated " +
+                            "response was withheld because it appeared " +
+                            "to present unverified place information " +
+                            "as a sourced directory record. " +
+                            "No address, source, or verification date " +
+                            "has been confirmed."
+                    } else {
+                        generated
+                    }
+                }
+
+                if (requestEpoch == conversationEpoch) {
+                    messages.add(
+                        ExperimentalChatMessage(
+                            text = if (answer.isNullOrBlank()) {
+                                "Gemma is unavailable. No usable response was returned."
+                            } else {
+                                answer
+                            },
+                            isUser = false
+                        )
                     )
-                )
+                    saveHistory()
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                messages.add(
-                    ExperimentalChatMessage(
-                        text = "Inference error: " +
-                            (e.message ?: e.javaClass.simpleName),
-                        isUser = false
+                if (requestEpoch == conversationEpoch) {
+                    messages.add(
+                        ExperimentalChatMessage(
+                            text = "Inference error: " +
+                                (e.message ?: e.javaClass.simpleName),
+                            isUser = false
+                        )
                     )
-                )
+                    saveHistory()
+                }
             } finally {
-                generating = false
+                if (requestEpoch == conversationEpoch) {
+                    generating = false
+                    generationJob = null
+                }
             }
         }
     }

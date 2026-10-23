@@ -151,3 +151,56 @@ local credentials, generated APKs, and build directories out of Git.
 
 The experimental implementation is maintained on a separate Git branch
 to protect the working production baseline.
+## CDI.5.44 — Persistent Chat History and Conversation Management
+
+### Implemented
+
+- Automatic device-local storage of experimental chat messages
+- Restoration of conversation history after app/process restart
+- Atomic JSON file writes in Android private application storage
+- User and assistant messages persisted in conversation order
+- Clear chat action in the Jarvis header
+- Confirmation dialog with Cancel and Clear chat options
+- Saved conversation clearing after confirmation
+- Cancellation and stale-response protection during conversation clearing
+- Existing Compose chat formatting and Gemma Companion IPC preserved
+- Existing Kampala discovery routing and directory trust safeguard preserved
+
+### Physical-device verification
+
+Tested on a Samsung Galaxy S20:
+
+- Cancel preserves existing messages: PASS
+- Clear chat removes visible messages: PASS
+- Deleted history remains deleted after reopening: PASS
+- New conversations survive restarting Jarvis: PASS
+
+Experimental chat restoration was also verified after an ADB force-stop
+and Activity relaunch.
+
+### Persistence limitations
+
+- One conversation is stored locally; multiple named chats are not yet supported.
+- Storage is private to the Android application, not synchronized to Firebase.
+- Clearing the chat does not delete copies stored outside the application.
+- App uninstallation or clearing application storage removes local history.
+- Long conversation histories are limited by the experimental store's
+  message-count, message-length, and file-size safeguards.
+- This checkpoint has been verified in the experimental application,
+  not released as a production Jarvis feature.
+
+### Kampala reliability status
+
+- Verified local directory integration and source-backed results are working.
+- The hosted catalog has been expanded to 12 records.
+- Directory aliases and matching are maintained in the backend.
+- Unsupported or unrecognized destination queries still require
+  additional intent-routing safeguards.
+- No ride-booking, live-price, or payment integration is claimed.
+
+### Next development priorities
+
+1. Improve handling of unsupported Kampala destination queries.
+2. Give genuine directory results clearer, tappable source presentation.
+3. Expand the verified Kampala directory.
+4. Introduce multiple conversations and history management when needed.

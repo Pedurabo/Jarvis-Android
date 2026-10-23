@@ -57,11 +57,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import kotlinx.coroutines.launch
+import androidx.compose.material3.AlertDialog
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 data class ExperimentalChatMessage(
     val text: String,
@@ -74,8 +76,10 @@ fun ExperimentalGemmaChat(
     input: String,
     generating: Boolean,
     onInputChange: (String) -> Unit,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    onClearConversation: () -> Unit
 ) {
+    var showClearConfirmation by remember { mutableStateOf(false) }
     val scrollState = rememberLazyListState()
     val keyboard = LocalSoftwareKeyboardController.current
     val clipboard = LocalClipboardManager.current
@@ -99,6 +103,42 @@ fun ExperimentalGemmaChat(
         }
     }
 
+    if (showClearConfirmation) {
+        AlertDialog(
+            onDismissRequest = {
+                showClearConfirmation = false
+            },
+            title = {
+                Text("Clear conversation?")
+            },
+            text = {
+                Text(
+                    "This will permanently delete the current " +
+                        "conversation from this device. " +
+                        "This action cannot be undone."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearConfirmation = false
+                        onClearConversation()
+                    }
+                ) {
+                    Text("Clear chat")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showClearConfirmation = false
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -139,6 +179,15 @@ fun ExperimentalGemmaChat(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                if (messages.isNotEmpty()) {
+                    TextButton(
+                        onClick = {
+                            showClearConfirmation = true
+                        }
+                    ) {
+                        Text("Clear chat")
+                    }
                 }
             }
 
@@ -287,8 +336,17 @@ fun ExperimentalGemmaChat(
                     }
                 }
             }
-                if (showScrollToBottom) {
-                    FloatingActionButton(
+            }
+
+            if (showScrollToBottom) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = 12.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
                         onClick = {
                             uiScope.launch {
                                 val lastIndex =
@@ -298,16 +356,17 @@ fun ExperimentalGemmaChat(
                                     scrollState.animateScrollToItem(lastIndex)
                                 }
                             }
-                        },
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(14.dp),
-                        containerColor =
-                            MaterialTheme.colorScheme.surfaceVariant
+                        }
                     ) {
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Scroll to latest message"
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Latest",
+                            style = MaterialTheme.typography.labelMedium
                         )
                     }
                 }
