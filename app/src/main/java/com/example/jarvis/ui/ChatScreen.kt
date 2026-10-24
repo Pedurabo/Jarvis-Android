@@ -169,9 +169,9 @@ fun ChatScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     horizontal = 16.dp,
-                    vertical = 20.dp
+                    vertical = 16.dp
                 ),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 if (uiState.messages.isEmpty()) {
                     item { WelcomeMessage(onSuggestionClick = { viewModel.onTextChanged(it) }) }
@@ -517,7 +517,7 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -537,7 +537,7 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
