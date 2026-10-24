@@ -214,19 +214,14 @@ class AssistantController @Inject constructor(
 
             return@coroutineScope response
         }
-        // Resolve an explicit starting-point follow-up before general AI.
-        val startingPointMatch = Regex(
-            """^(?:i(?:'m| am)\s+starting\s+from|starting\s+from|from)\s+(.+?)\s*[.?!]?$""",
-            RegexOption.IGNORE_CASE
-        ).matchEntire(query.trim())
-
-        val startingPoint = startingPointMatch
-            ?.groupValues
-            ?.get(1)
-            ?.trim()
-            ?.trimEnd('.', '?', '!')
-            ?.trim()
-
+        // CDI.5.57-F: Interpret a short location reply only when
+        // a navigation exchange is awaiting an origin.
+        val startingPoint =
+            if (pendingNavigationDestination != null) {
+                KampalaOriginFollowUpResolver.resolve(query)
+            } else {
+                null
+            }
         val pendingDestination = pendingNavigationDestination
 
         if (
@@ -288,30 +283,134 @@ class AssistantController @Inject constructor(
             pendingNavigationDestination = null
         }
 
-        // CDI.5.56-A: A navigation request without an origin
-        // must ask for the starting point rather than fall to AI.
-        // Existing directory-specific commands remain unchanged.
+        // CDI.5.57-A: Check user-supplied destination-only requests
+        // against exact directory listings before asking for origin.
         val destinationOnly =
             KampalaJourneyIntentResolver.destinationWithoutOrigin(query)
 
         if (destinationOnly != null) {
-            pendingNavigationDestination = destinationOnly
-            pendingDestinationChoices = null
+            onUpdate("Checking Kampala directory for destination...")
 
-            val notice =
-                "You want directions to $destinationOnly. " +
-                    "Where will you be starting from? " +
-                    "I have not verified this destination or calculated " +
-                    "a route. Google Maps will resolve both locations " +
-                    "when you choose to open directions."
+            val directoryResult = kampalaPlacesRepository.search(
+                query = destinationOnly
+            )
+
+            val exactMatches = when (directoryResult) {
+                is KampalaPlacesRepository.SearchResult.Success -> {
+                    val entries = directoryResult.places
+
+                    val indices =
+                        KampalaDestinationMatchPolicy.exactIndices(
+                            destinationOnly,
+                            entries.map { it.name to it.address }
+                        )
+
+                    indices.map { entries[it] }
+                }
+
+                is KampalaPlacesRepository.SearchResult.Failure ->
+                    emptyList()
+            }
+
+            val notice: String
+            val responseOrigin: ResponseOrigin
+
+            when {
+                exactMatches.size == 1 -> {
+                    val place = exactMatches.single()
+
+                    pendingDestinationChoices = null
+                    pendingNavigationDestination =
+                        "${place.name}, ${place.address}"
+
+                    responseOrigin = ResponseOrigin.DIRECTORY_RESULT
+
+                    notice =
+                        "I found an exact listing for ${place.name} " +
+                            "in the Kampala directory.\n" +
+                            "Listed address: ${place.address}\n" +
+                            "Directory source: ${place.sourceUrl}\n" +
+                            "Source checked: ${place.verifiedAt}\n\n" +
+                            "Where will you be starting from? " +
+                            "Google Maps will calculate the route " +
+                            "after you choose to open directions."
+                }
+
+                exactMatches.size in 2..10 -> {
+                    pendingNavigationDestination = null
+
+                    pendingDestinationChoices =
+                        exactMatches.map { it.name to it.address }
+
+                    responseOrigin = ResponseOrigin.DIRECTORY_NOTICE
+
+                    notice = buildString {
+                        appendLine(
+                            "I found several exact directory listings " +
+                                "for $destinationOnly:"
+                        )
+                        appendLine()
+
+                        exactMatches.forEachIndexed { index, place ->
+                            appendLine(
+                                "${index + 1}. ${place.name} — " +
+                                    place.address
+                            )
+                        }
+
+                        appendLine()
+                        append(
+                            "Reply with the destination number, " +
+                                "or say cancel."
+                        )
+                    }
+                }
+
+                exactMatches.size > 10 -> {
+                    pendingNavigationDestination = null
+                    pendingDestinationChoices = null
+                    responseOrigin = ResponseOrigin.DIRECTORY_NOTICE
+
+                    notice =
+                        "There are more than ten distinct exact " +
+                            "directory listings for $destinationOnly. " +
+                            "Please specify the area or address."
+                }
+
+                else -> {
+                    pendingDestinationChoices = null
+                    pendingNavigationDestination = destinationOnly
+                    responseOrigin = ResponseOrigin.DIRECTORY_NOTICE
+
+                    val verificationNotice =
+                        if (
+                            directoryResult is
+                                KampalaPlacesRepository.SearchResult.Failure
+                        ) {
+                            "The directory could not verify the " +
+                                "destination right now."
+                        } else {
+                            "I found no usable exact directory listing " +
+                                "for this destination."
+                        }
+
+                    notice =
+                        "You want directions to $destinationOnly. " +
+                            "$verificationNotice " +
+                            "Where will you be starting from? " +
+                            "This is your supplied destination, not a " +
+                            "verified address. Please confirm both " +
+                            "locations in Google Maps."
+                }
+            }
 
             val response = AssistantResponse(
                 text = notice,
                 voiceOptimizedText = notice,
                 confidence = EvidenceConfidencePolicy.level(
-                    ResponseOrigin.DIRECTORY_NOTICE
+                    responseOrigin
                 ),
-                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                origin = responseOrigin,
                 metadata = ResponseMetadata(
                     route = ModelRouter.Route.LOCAL,
                     processingTimeMs =
@@ -326,6 +425,7 @@ class AssistantController @Inject constructor(
 
             return@coroutineScope response
         }
+
         // CDI.5.52-B3: Keep explicit Kampala directions requests
         // away from ungrounded local-model route generation.
         val directionsRequest = Regex(

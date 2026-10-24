@@ -250,4 +250,56 @@ class KampalaJourneyIntentResolverTest {
             )
         )
     }
+
+    // CDI.5.57-C: Real Samsung destination-first regression.
+
+    @Test
+    fun airportFromKololoProducesCompleteJourney() {
+        val journey = KampalaJourneyIntentResolver.resolve(
+            "I need to get to entebbe airport from kololo"
+        )
+
+        assertNotNull(journey)
+        assertEquals("kololo", journey!!.origin)
+        assertEquals("entebbe airport", journey.destination)
+    }
+
+    @Test
+    fun airportFromKololoIsNotDestinationOnly() {
+        assertNull(
+            KampalaJourneyIntentResolver.destinationWithoutOrigin(
+                "I need to get to entebbe airport from kololo"
+            )
+        )
+    }
+
+    @Test
+    fun destinationFirstWorksWithQuestionMark() {
+        val journey = KampalaJourneyIntentResolver.resolve(
+            "I want to go to Mengo Palace from Rubaga?"
+        )
+
+        assertNotNull(journey)
+        assertEquals("Rubaga", journey!!.origin)
+        assertEquals("Mengo Palace", journey.destination)
+    }
+
+    @Test
+    fun destinationOnlyAirportStillRequiresOrigin() {
+        assertEquals(
+            "entebbe airport",
+            KampalaJourneyIntentResolver.destinationWithoutOrigin(
+                "I need to get to entebbe airport"
+            )
+        )
+    }
+
+    @Test
+    fun destinationFirstDoesNotClassifyOrdinaryQuestion() {
+        assertNull(
+            KampalaJourneyIntentResolver.resolve(
+                "Explain how flights reach Entebbe Airport"
+            )
+        )
+    }
 }

@@ -104,6 +104,10 @@ internal object KampalaJourneyIntentResolver {
             val match = pattern.matchEntire(normalized) ?: continue
             val destination = cleanPlace(match.groupValues[1])
 
+            if (destinationFirstJourney.matches(normalized)) {
+                return null
+            }
+
             if (
                 destination.length in 2..80 &&
                 placePattern.matches(destination)
@@ -114,12 +118,29 @@ internal object KampalaJourneyIntentResolver {
 
         return null
     }
+    // CDI.5.57-C: A complete journey may state destination first.
+    // The origin must be explicitly introduced by "from".
+    private val destinationFirstJourney = Regex(
+        """^(?:i\s+)?(?:need|want|have)\s+to\s+(?:get|go|reach)(?:\s+to)?\s+(.+?)\s+from\s+(.+)$""",
+        RegexOption.IGNORE_CASE
+    )
     fun resolve(input: String): Journey? {
         val normalized = input.trim()
             .replace(whitespace, " ")
             .trim()
 
         if (normalized.isBlank()) return null
+
+        val destinationFirst = destinationFirstJourney.matchEntire(
+            normalized.trimEnd('.', '?', '!')
+        )
+
+        if (destinationFirst != null) {
+            return createJourney(
+                destinationFirst.groupValues[2],
+                destinationFirst.groupValues[1]
+            )
+        }
 
         // Explicit "from X to Y" journeys.
         for (pattern in explicitFromTo) {
