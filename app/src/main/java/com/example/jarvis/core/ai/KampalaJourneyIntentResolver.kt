@@ -81,6 +81,39 @@ internal object KampalaJourneyIntentResolver {
         return Journey(origin, destination)
     }
 
+    // CDI.5.56-A: Recognize a directions request with no origin.
+    // This does not verify the supplied destination.
+    private val destinationOnlyPatterns = listOf(
+        Regex(
+            """^(?:i\s+)?(?:need|want|have)\s+to\s+(?:get|go|reach)(?:\s+to)?\s+(.+)$""",
+            RegexOption.IGNORE_CASE
+        ),
+        Regex(
+            """^(?:(?:can|could)\s+you|please)\s+(?:direct|guide|take)\s+me\s+to\s+(.+)$""",
+            RegexOption.IGNORE_CASE
+        )
+    )
+
+    fun destinationWithoutOrigin(input: String): String? {
+        val normalized = input.trim()
+            .replace(whitespace, " ")
+            .trimEnd('.', '?', '!')
+            .trim()
+
+        for (pattern in destinationOnlyPatterns) {
+            val match = pattern.matchEntire(normalized) ?: continue
+            val destination = cleanPlace(match.groupValues[1])
+
+            if (
+                destination.length in 2..80 &&
+                placePattern.matches(destination)
+            ) {
+                return destination
+            }
+        }
+
+        return null
+    }
     fun resolve(input: String): Journey? {
         val normalized = input.trim()
             .replace(whitespace, " ")

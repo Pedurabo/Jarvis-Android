@@ -288,6 +288,44 @@ class AssistantController @Inject constructor(
             pendingNavigationDestination = null
         }
 
+        // CDI.5.56-A: A navigation request without an origin
+        // must ask for the starting point rather than fall to AI.
+        // Existing directory-specific commands remain unchanged.
+        val destinationOnly =
+            KampalaJourneyIntentResolver.destinationWithoutOrigin(query)
+
+        if (destinationOnly != null) {
+            pendingNavigationDestination = destinationOnly
+            pendingDestinationChoices = null
+
+            val notice =
+                "You want directions to $destinationOnly. " +
+                    "Where will you be starting from? " +
+                    "I have not verified this destination or calculated " +
+                    "a route. Google Maps will resolve both locations " +
+                    "when you choose to open directions."
+
+            val response = AssistantResponse(
+                text = notice,
+                voiceOptimizedText = notice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", notice)
+
+            return@coroutineScope response
+        }
         // CDI.5.52-B3: Keep explicit Kampala directions requests
         // away from ungrounded local-model route generation.
         val directionsRequest = Regex(

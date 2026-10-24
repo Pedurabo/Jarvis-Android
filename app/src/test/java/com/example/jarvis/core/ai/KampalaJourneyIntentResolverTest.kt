@@ -191,4 +191,63 @@ class KampalaJourneyIntentResolverTest {
             )
         )
     }
+
+    // CDI.5.56-A: Destination-only clarification tests.
+
+    @Test
+    fun needToGetToEntebbeAirportWithoutOrigin() {
+        assertEquals(
+            "Entebbe Airport",
+            KampalaJourneyIntentResolver.destinationWithoutOrigin(
+                "I need to get to Entebbe Airport"
+            )
+        )
+    }
+
+    @Test
+    fun directMeToMengoPalaceWithoutOrigin() {
+        assertEquals(
+            "Mengo Palace",
+            KampalaJourneyIntentResolver.destinationWithoutOrigin(
+                "Can you direct me to Mengo Palace?"
+            )
+        )
+    }
+
+    @Test
+    fun guideMeToEmbassyWithoutOrigin() {
+        assertEquals(
+            "the American Embassy",
+            KampalaJourneyIntentResolver.destinationWithoutOrigin(
+                "Please guide me to the American Embassy"
+            )
+        )
+    }
+
+    @Test
+    fun fromToJourneyIsNotDestinationOnly() {
+        assertNull(
+            KampalaJourneyIntentResolver.destinationWithoutOrigin(
+                "How do I get from Katwe to Luzira?"
+            )
+        )
+    }
+
+    @Test
+    fun nonNavigationQuestionIsNotDestinationOnly() {
+        assertNull(
+            KampalaJourneyIntentResolver.destinationWithoutOrigin(
+                "Explain Kotlin coroutines"
+            )
+        )
+    }
+
+    @Test
+    fun directoryNavigationRemainsSeparate() {
+        assertNull(
+            KampalaJourneyIntentResolver.destinationWithoutOrigin(
+                "Take me to Acacia Mall"
+            )
+        )
+    }
 }
