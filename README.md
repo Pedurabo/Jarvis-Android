@@ -1,367 +1,107 @@
 # Jarvis Android
 
-**Kampala-focused Android AI assistant | Active research and development**
+**Your Kampala Life Assistant · Kotlin / Jetpack Compose · Active development**
 
-Jarvis is a Kotlin and Jetpack Compose assistant for practical life in Kampala, Uganda, aimed at residents and visitors. It combines on-device conversational AI, sourced Places and Knowledge retrieval, multi-task request interpretation, and approval-gated Android actions.
+Jarvis is an experimental Android assistant being built for residents of Kampala, Uganda, and people visiting the city. It combines local conversational AI with a source-aware Kampala Places directory and user-controlled Android actions.
 
-## Current Status — 20 October 2026
+**Status as of 24 October 2026:** Active prototype, **not production-ready**. The current navigation and chat flows have been tested on a physical Samsung Galaxy S20. The latest application checkpoint is [`fbc7245`](https://github.com/Pedurabo/Jarvis-Android/commit/fbc7245a78b6fa8ce8c6f47ec691eeb0640034fe) (*Connect verified Kampala directory destinations to navigation*).
 
-The project has moved beyond the original two-destination prototype. The latest **CDI.4.4-R** implementation passed the offline JVM suite (34 Gradle tasks, BUILD SUCCESSFUL). **CDI.4.4-R has not yet been installed and manually verified on Samsung.** Jarvis is experimental, not production-ready.
+## What works today
 
-## Work Completed
+### Kampala places and evidence
 
-### Kampala Places Discovery
-- Integrated a public Places API with keyword, area and category search and source-aware formatting.
-- Initial device-tested destinations included Acacia Mall in Kisementi and Gaddafi National Mosque in Old Kampala.
-- Later Samsung tests demonstrated sourced restaurant discovery in Kololo (Khana Khazana) and hotel discovery in Kampala.
-- Added broader natural-language destination handling, coverage notices and honest empty-results reporting.
-- Directory entries do not establish current inventory, prices, menus, operating hours or reservation availability.
+- Search the Kampala Places directory by supported keyword, area, category, and named destination.
+- Show directory-backed place details, addresses, source URLs, and source-check dates when supplied by the service.
+- Handle unrecognized searches and missing directory records without inventing addresses.
+- Validate directory response structure, required listing fields, HTTPS source URLs, and nonfuture verification dates before displaying directory entries.
+- Distinguish sourced directory responses and notices from local AI-generated answers. Provenance labels indicate an evidence category, **not independently verified accuracy**.
+- Retrieve supported source-grounded Kampala Knowledge content, including Kampala history.
 
-### Kampala Knowledge and Factual Reliability
-- Implemented sourced Knowledge retrieval for supported questions such as Kampala history.
-- Added factual and geographic boundaries to reduce fabricated local information.
-- Implemented a curated location fact for Kampala and Uganda.
-- Added response-relevance and output-integrity safeguards, including containment of irrelevant tool discussions and unsupported Kampala hills lists.
-- These safeguards target known failures; they are not comprehensive factual verification.
+Directory coverage is limited. A structurally valid directory listing is not a guarantee that a business is open, that its address remains current, or that a source is independently authoritative.
 
-### Compositional Discovery Intelligence
-- Interpret multi-part requests involving markets, food, directions and ride services as separate tasks.
-- Report available evidence and unsupported tasks without pretending to complete bookings or navigation.
-- Product inventory, ride ordering and live directions still require verified integrations.
+### Navigation: tested end to end
 
-### Evidence and Confidence
-- Distinguish Places results/notices, Knowledge results/notices, curated facts and AI-generated answers.
-- CDI.4.4-R introduced the CURATED_FACT origin through AssistantController, EvidenceConfidencePolicy and JarvisViewModel.
-- Confidence labels represent evidence categories, not calibrated probabilities of correctness.
-- General on-device model explanations still have known technical accuracy problems.
+Jarvis supports a user-controlled journey from a recognised Kampala area or **one exact matching directory destination**:
 
-### Android Foundation
-Kotlin/Compose UI, local model components, voice-related functionality, conversation handling, Hilt, coroutines, Retrofit/OkHttp, skill routing and user-approval safeguards for actions. Opening Android Settings was exercised on Samsung in earlier tests. Some components and integrations are not production-validated.
+1. Ask *“How do I get to Muyenga?”* or *“Take me to Acacia Mall.”*
+2. For a directory destination, Jarvis searches the Places service and requires a unique exact-name match before using its listed address.
+3. Jarvis asks where the trip begins; a reply such as *“From Ntinda”* completes the two-turn request.
+4. A native **Your journey** card displays the origin and destination, including when a previously saved directions message is restored.
+5. **Open directions** opens Google Maps only after the user taps it. Google Maps resolves the locations and calculates the actual route.
 
-## Verification
+Successful Samsung Galaxy S20 checks covered Ntinda → Muyenga, Nakasero → Kololo, Ntinda → Acacia Mall, the Maps handoff, no automatic launch, restored journey cards, normal source links, and unknown-destination safety.
 
-- Samsung device testing: Places searches, history retrieval, multi-intent handling, geographic safeguards and relevance checks.
-- CDI.4.4-R: offline JVM suite passed on 20 October 2026 (1m 50s, 34 Gradle tasks).
-- CDI.4.4-R Samsung installation and final provenance verification: pending.
-- Code checkpoint committed to main: 7818527341cdba1666fdae3c6207042918b9e7f7.
-- Clean-checkout reproducibility has not been independently verified.
+**Navigation boundaries:** Jarvis does not calculate or verify turn-by-turn directions, road conditions, distances, or travel times. Its current neighbourhood recognition is limited, destination search uses conservative exact matching, and multiple matching directory records are not yet interactively disambiguated. Navigation conversation context is temporary in-process state and is not guaranteed to survive an app process restart.
 
-## Technology Stack
+### Android and local AI
 
-Kotlin · Android SDK · Jetpack Compose · Hilt · Coroutines · Gradle · Retrofit · OkHttp · Gson · local inference · Node.js services · JVM tests.
+- Jetpack Compose conversational interface with unified header, model dropdown, persistent composer, improved message spacing, source presentation, scrolling, and a **Latest** jump control.
+- Device-local conversation persistence and restoration using Room in the current app.
+- Local Llama 3.2 1B and Gemma 4 E2B paths, including a separately installed Gemma Companion service for Gemma inference.
+- Samsung-tested model switching and core chat functionality during the navigation regression checks.
+- Earlier experimental work includes Gemma Binder/AIDL diagnostics, retry handling, chat clearing, source links, and Maps search actions; those older milestone notes do not all describe the current primary app architecture.
 
-## Kampala Preview API
+Models and private weights are not distributed with this repository. General model responses may be incomplete or incorrect; on-device inference and companion-service reliability are still under development.
 
-https://jarvis-kampala-preview.onrender.com
+## Verification and checkpoints
 
-Documented endpoints include GET /health and GET /places with keyword, category and area parameters. The free-tier service may cold-start after inactivity. Record counts and freshness must be confirmed against the running API rather than inferred from old milestones. Public Places search does not require paid AI generation.
+These are development acceptance tests, **not a complete automated end-to-end test suite**.
 
-## Development
+| Checkpoint | Change | Reported verification |
+| --- | --- | --- |
+| [`16b9bf8`](https://github.com/Pedurabo/Jarvis-Android/commit/16b9bf8) | Directory input safeguards and initial directions guard | Android build and Samsung |
+| [`17f9f42`](https://github.com/Pedurabo/Jarvis-Android/commit/17f9f42) | Preserve destination across a starting-point follow-up | Unit tests, build, 4/4 Samsung checks |
+| [`784240c`](https://github.com/Pedurabo/Jarvis-Android/commit/784240c) | User-controlled Google Maps directions URL | 6/6 Samsung checks |
+| [`31664ec`](https://github.com/Pedurabo/Jarvis-Android/commit/31664ec) | Native journey card in Compose | Unit tests, build, 6/6 Samsung checks |
+| [`fbc7245`](https://github.com/Pedurabo/Jarvis-Android/commit/fbc7245) | Directory-backed named destination navigation | Unit tests, build, 6/6 Samsung checks |
 
-With a compatible Android SDK, JDK and required local configuration, run the offline JVM suite using the Gradle wrapper task app:testDebugUnitTest. Install the debug build separately with app:installDebug only after tests pass, then verify on the physical device.
+The latest reported directory-navigation acceptance test covered Acacia Mall discovery, the journey card, Google Maps opening after a tap, Muyenga navigation, unrecognized-destination handling, and ordinary directory/chat/model regressions. The committed source reflects these changes; a fresh clean-checkout build has **not** been independently verified.
 
-Never commit local.properties, .env files, app/google-services.json, signing keys, credentials, local logs, backups, build artifacts or private model binaries.
+## Technology
 
-## Long-Term Product Vision
+Kotlin · Android SDK · Jetpack Compose · Room · Hilt · Kotlin coroutines · Gradle · Retrofit / OkHttp · local on-device inference · Gemma Companion IPC · JVM unit tests.
 
-Practical Kampala discovery for food, markets, shopping, transport, hotels, short stays, tourism, government offices, embassies, NGOs, worship sites, residential locations and vetted household services. These are product goals; live reservations, ordering, payments, inventory confirmation and real-time navigation are not yet generally supported.
-
-## Next Priorities
+## Kampala Places preview service
 
-1. Complete CDI.4.4-R Samsung provenance verification.
-2. Improve general technical-answer accuracy and response relevance.
-3. Expand genuinely verified Kampala sources and directory coverage.
-4. Consolidate evidence resolution and confidence UI.
-5. Modernize the conversational interface and validate integrations.
+[Jarvis Kampala Preview API](https://jarvis-kampala-preview.onrender.com)
 
-**Active development. Not a production-ready city or booking assistant.**
+The experimental service provides endpoints such as `GET /health` and `GET /places`, supporting keyword, category, and area filters. Availability, supported data, and freshness depend on the running service; free-tier hosting may cold-start. This is not a guaranteed live inventory or booking service.
 
-## Experimental Jarvis: Kampala Life Assistant
+## Developer workflow
 
-Jarvis is an Android assistant being developed to support everyday life
-in Kampala, Uganda, for residents and international visitors.
+Use a compatible JDK, Android SDK, Gradle wrapper, and private local model/companion configuration.
 
-The experimental version combines a modern Jetpack Compose conversation
-interface, local AI inference through Gemma, and an online Kampala places
-directory. This is an active development milestone, not a production release.
+```powershell
+.\gradlew.bat :app:testDebugUnitTest
+.\gradlew.bat :app:assembleDebug
+```
 
-### Current experimental architecture
+Run physical-device verification **after** the build. For manual testing, install the debug APK without clearing app data and launch the app normally; connected Android instrumentation tests may reinstall or replace the app. Do not assume an APK was installed just because `assembleDebug` succeeded.
 
-- Android application: `com.example.jarvis.gemmatest`
-- UI: Kotlin and Jetpack Compose
-- Inference client: `GemmaCompanionClient`
-- Model runtime: separately installed Gemma Companion application
-- Model: Gemma 4 E2B via LiteRT-LM and GPU
-- IPC: Android Binder/AIDL with signature-protected companion service
-- Kampala discovery: `KampalaExperimentalDiscovery`
-- Directory backend: `jarvis-kampala-preview.onrender.com`
-- Firebase: bypassed for the isolated experimental chat startup
+Do not commit `local.properties`, `.env`, `google-services.json`, signing credentials, device logs, proprietary model weights, backups, build outputs, or private user data.
 
-The original Jarvis application and its Firebase-dependent architecture
-remain separate from this experimental implementation.
+## Known limitations
 
-### Implemented and tested
-
-- Successful Gemma GPU inference on a physical Samsung Galaxy S20
-- Successful Jarvis-to-Gemma Binder IPC response generation
-- Multi-message conversation interface
-- Session conversation context for general Gemma prompts
-- Jarvis branding: **Your Kampala Life Assistant**
-- Modern dark-mode conversation layout
-- Rounded message composer and distinct conversation messages
-- Markdown response presentation
-- Numbered lists, headings, inline emphasis, and fenced code blocks
-- Functional code-block clipboard copying
-- Response-copy action and scroll-to-bottom UI controls
-- Experimental Kampala directory integration
-- Offline Gradle debug builds
-
-### Current limitations
-
-- The experimental app requires the separately installed Gemma Companion
-  with its privately imported model.
-- Model weights are not included in this repository.
-- The original full Jarvis assistant pipeline is not yet restored inside
-  the Firebase-independent experimental application.
-- Llama/Gemma fallback exists in experimental routing code but has not
-  been validated through the current experimental chat interface.
-- Kampala discovery depends on an online backend.
-- Directory intent classification and geographic relevance require work.
-- Unsupported landmark searches can still reach Gemma and produce
-  generic, ungrounded responses.
-- Live prices, inventory, reservations, and directions are not guaranteed.
-- Model-generated citations must not be treated as verified sources.
-- Keyboard handling, response copying, and scroll navigation require
-  further complete on-device acceptance testing.
-- The Markdown renderer is lightweight and does not implement all
-  CommonMark features.
-
-### Next priorities
-
-1. Complete remaining UI/UX interaction refinements.
-2. Strengthen Kampala local-first intent recognition and source provenance.
-3. Improve geographic filtering and reliable directory fallback notices.
-4. Validate Llama/Gemma switching and recovery behavior.
-5. Integrate broader Kampala Life services with verifiable information.
-
-### Development safety
-
-Keep private model files, signing keys, Firebase configuration files,
-local credentials, generated APKs, and build directories out of Git.
-
-The experimental implementation is maintained on a separate Git branch
-to protect the working production baseline.
-## CDI.5.44 — Persistent Chat History and Conversation Management
-
-### Implemented
-
-- Automatic device-local storage of experimental chat messages
-- Restoration of conversation history after app/process restart
-- Atomic JSON file writes in Android private application storage
-- User and assistant messages persisted in conversation order
-- Clear chat action in the Jarvis header
-- Confirmation dialog with Cancel and Clear chat options
-- Saved conversation clearing after confirmation
-- Cancellation and stale-response protection during conversation clearing
-- Existing Compose chat formatting and Gemma Companion IPC preserved
-- Existing Kampala discovery routing and directory trust safeguard preserved
-
-### Physical-device verification
-
-Tested on a Samsung Galaxy S20:
-
-- Cancel preserves existing messages: PASS
-- Clear chat removes visible messages: PASS
-- Deleted history remains deleted after reopening: PASS
-- New conversations survive restarting Jarvis: PASS
-
-Experimental chat restoration was also verified after an ADB force-stop
-and Activity relaunch.
-
-### Persistence limitations
-
-- One conversation is stored locally; multiple named chats are not yet supported.
-- Storage is private to the Android application, not synchronized to Firebase.
-- Clearing the chat does not delete copies stored outside the application.
-- App uninstallation or clearing application storage removes local history.
-- Long conversation histories are limited by the experimental store's
-  message-count, message-length, and file-size safeguards.
-- This checkpoint has been verified in the experimental application,
-  not released as a production Jarvis feature.
-
-### Kampala reliability status
-
-- Verified local directory integration and source-backed results are working.
-- The hosted catalog has been expanded to 12 records.
-- Directory aliases and matching are maintained in the backend.
-- Unsupported or unrecognized destination queries still require
-  additional intent-routing safeguards.
-- No ride-booking, live-price, or payment integration is claimed.
-
-### Next development priorities
-
-1. Improve handling of unsupported Kampala destination queries.
-2. Give genuine directory results clearer, tappable source presentation.
-3. Expand the verified Kampala directory.
-4. Introduce multiple conversations and history management when needed.
-
-## CDI.5.45 - Kampala Local-Intent Reliability
-
-### Implementation
-
-- Added a conservative fallback for Kampala-local requests after the
-  existing discovery classifier returns Pass.
-- Named local destination requests are routed to the existing
-  source-grounded Kampala Places repository.
-- Unverified directory results are not replaced with invented addresses.
-- SafeBoda ride requests receive an explicit booking-limitation notice.
-- No ride is booked and no payment or external transaction is initiated.
-- Ordinary general-purpose prompts continue to use the Gemma Companion.
-
-### Samsung S20 acceptance tests
-
-- Bank of Uganda directory lookup: PASS
-- Ministry of Finance verification safeguard: PASS
-- Marriott Hotel Kampala verification safeguard: PASS
-- SafeBoda booking-limitation notice: PASS
-- General Kotlin coroutine explanation: PASS
-- Follow-up general inference after minimizing Jarvis: PASS
-
-Previously verified CDI.5.44 chat-history persistence and Clear chat
-functionality remain in the experimental application.
-
-### Known limitations
-
-- The local-intent safeguard is conservative and does not yet cover
-  every conversational variation or every local service.
-- Directory results depend on the available catalog and live service.
-- Directory information must not be presented as live booking,
-  navigation, or payment confirmation.
-- One general Gemma inference attempt returned no usable response
-  during testing. Later attempts succeeded, including a subsequent
-  short Kotlin explanation and follow-up questions.
-- The cause of that intermittent failure remains undetermined.
-- This implementation remains experimental and is not a production
-  Jarvis release.
-
-### Next priorities
-
-1. Improve inference diagnostics for intermittent Binder/model failures.
-2. Expand natural-language local-intent test coverage.
-3. Improve directory source-link presentation.
-4. Continue verified Kampala catalog expansion.
-
-## CDI.5.46 - Gemma IPC Diagnostics
-
-### Implementation
-
-- Added stage-specific diagnostic logging to the experimental
-  Gemma Companion IPC client.
-- Logs distinguish service binding, model readiness, initialization,
-  generation callbacks, request cancellation, errors, and timeouts.
-- Technical status messages do not include the user prompt,
-  generated answer, or model contents.
-- The existing 90-second request timeout remains unchanged.
-- Companion model configuration and LiteRT GPU setup are unchanged.
-- Kampala routing, persistent history, and Clear chat are unchanged.
-
-### Samsung S20 verification
-
-CDI.5.46-B completed successfully on October 23, 2026.
-
-Observed IPC log sequence:
-
-- 16:50:34.489 - request_started
-- 16:50:34.497 - binder_bind_requested
-- 16:50:34.833 - binder_connected
-- 16:50:34.834 - model_file_ready
-- 16:50:43.211 - model_initialized
-- 16:50:48.345 - generation_response_received
-- 16:50:48.351 - request_success
-
-Approximate observed durations:
-
-- Total request: 13.86 seconds
-- Model initialization: 8.38 seconds
-- Response generation: 5.13 seconds
-
-These measurements describe one successful device test, not
-general performance benchmarks.
-
-### Known limitations
-
-- An earlier inference request returned no usable response.
-  Subsequent requests completed successfully.
-- The original intermittent failure has not been reproduced
-  with diagnostic logging enabled, so its cause is unknown.
-- IPC failures still return a generic user-visible message.
-  The new logs provide technical information for debugging.
-- This remains an experimental integration, not a
-  production Jarvis release.
-
-### Next priorities
-
-1. Reproduce and classify intermittent inference failures.
-2. Improve user-visible error handling without exposing internals.
-3. Verify cancellation and recovery behavior during repeated requests.
-4. Preserve stable Kampala routing and persistent chat history.
-
-## CDI.5.47 - Inference Recovery
-
-### Implemented
-- More actionable messages for failed Gemma inference.
-- Manual Retry action for the latest failed assistant response.
-- Retry reuses the original user question without adding a duplicate.
-- Previous chat-history, Clear chat and Kampala discovery behavior retained.
-- No automatic model restart or automatic retry.
-- Temporary controlled-test fixture absent from final source.
-
-### Samsung S20 verification
-- Normal Gemma inference: PASS
-- Successful response controls: PASS
-- History survives reopening: PASS
-- Clear chat cancellation: PASS
-- Clean offline build and installation: PASS
-- Actual failure-to-Retry-to-success interaction: NOT VERIFIED
-
-### Remaining limitations
-- Intermittent inference failures require further reliability work.
-- The Retry failure path must not be described as device-verified.
-- The experimental application is not yet a complete Kampala Life MVP.
-
-### Product priority after CDI.5.47
-Prioritize practical Kampala discovery, broader verified coverage,
-useful place details, source presentation, map handoff and complete
-end-to-end user journeys rather than further Retry simulations.
-
-## CDI.5.48 - Kampala Place Actions
-
-### Implemented
-- Directory-backed response provenance in experimental chat messages.
-- Backward-compatible persistence of directory provenance.
-- View source action for sourced directory listings.
-- Open in Maps action using the directory address.
-- Corrected Google Maps search URL with trailing slash.
-- Android external-link handling without booking or payment.
-
-### Samsung Galaxy S20 verification
-- Offline Android build: PASS
-- APK installation and launch: PASS
-- Bank of Uganda listing and address: PASS
-- Source URL and verification date visible: PASS
-- View source button visible: PASS
-- Open in Maps button visible: PASS
-- Initial Maps URL: FAILED (HTTP 404)
-- Corrected Google Maps URL: PASS
-- View source website opening: NOT YET VERIFIED
-- Conversation restoration after external handoff: NOT YET VERIFIED
-
-### Limitations
-- Maps searches an address; exact destination and routing are not guaranteed.
-- Kampala directory coverage remains limited.
-- Current opening hours, availability and prices are not verified.
-- Gemma failure-to-Retry recovery remains unverified.
-
-### Product priority
-Expand verified Kampala coverage and validate practical
-search, source, contact and navigation workflows.
+- Limited Kampala directory coverage and exact-match named-place navigation. Multiple branches with the same name need safe disambiguation.
+- Source URLs and checked dates are useful provenance, not proof of real-time correctness or independently audited listings.
+- Routes, distances, traffic, and ETAs come from the mapping provider, not Jarvis.
+- Model-generated factual or technical answers are not comprehensively fact-checked.
+- Local AI setup and the companion app require device-specific configuration.
+- Not all UI, failure/retry, process-restart, offline, or service-unavailable scenarios have complete automated regression coverage.
+- No general-purpose ride booking, food ordering, payments, hotel reservations, live market pricing, or guaranteed real-time availability.
+
+## Next development priorities
+
+1. **CDI.5.53-B:** Handle multiple matching named destinations safely, using real directory records and explicit branch selection.
+2. Add focused automated tests for navigation state transitions and directory-result ambiguity.
+3. Restore pending navigation context safely across app restarts where appropriate.
+4. Expand genuinely sourced Kampala places and services, with clearer freshness and coverage signals.
+5. Continue improving the primary Compose experience and local model reliability.
+
+## Long-term direction
+
+Jarvis aims to help people discover and navigate Kampala's markets, shopping, food, hotels and short stays, transport options, tourist attractions, government offices, embassies, NGOs, faith communities, apartments, and vetted home services. Integrations with shopping, rides, ordering, reservations, and payments are **product goals**, not claims of currently available functionality. Any future external booking or payment action should require explicit user consent.
+
+---
+
+**Active research and development. Not a released or production-ready city assistant.**
