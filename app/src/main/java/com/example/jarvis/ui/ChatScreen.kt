@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.jarvis.core.ai.ConfidenceLevel
+import kotlinx.coroutines.launch
 
 @Composable
 fun ChatScreen(
@@ -58,15 +59,33 @@ fun ChatScreen(
     val llmError by viewModel.llmError.collectAsState()
     val isProcessing = uiState.isProcessing
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     var showFeedbackDialog by remember { mutableStateOf<Message?>(null) }
 
-    // Check if keyboard is visible to scroll to bottom
-    val isKeyboardVisible = WindowInsets.ime.asPaddingValues().calculateBottomPadding() > 0.dp
+    // Follow new messages only when the reader is near the bottom.
+    // Opening the keyboard must not interrupt older-message reading.
+    var previousMessageCount by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(uiState.messages.size, isKeyboardVisible) {
-        if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
+    LaunchedEffect(uiState.messages.size) {
+        val currentCount = uiState.messages.size
+        val previousCount = previousMessageCount
+
+        if (currentCount > previousCount) {
+            val lastVisibleIndex =
+                listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+
+            val shouldFollow =
+                previousCount == 0 ||
+                lastVisibleIndex >= previousCount - 2
+
+            previousMessageCount = currentCount
+
+            if (shouldFollow && currentCount > 0) {
+                listState.animateScrollToItem(currentCount - 1)
+            }
+        } else {
+            previousMessageCount = currentCount
         }
     }
 
@@ -148,11 +167,14 @@ fun ChatScreen(
                 modelSelector()
             }
 
-            LazyColumn(
-                state = listState,
+            Box(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+            ) {
+                LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     horizontal = 16.dp,
                     vertical = 20.dp
@@ -177,6 +199,36 @@ fun ChatScreen(
                 if (isProcessing) {
                     item {
                         TypingIndicator(uiState.processingStatus ?: "Jarvis is thinking...")
+                    }
+                }
+                }
+
+                val showJumpToLatest by remember {
+                    derivedStateOf {
+                        val total = listState.layoutInfo.totalItemsCount
+                        val lastVisible =
+                            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                                ?: 0
+                        total > 0 && lastVisible < total - 2
+                    }
+                }
+
+                if (showJumpToLatest) {
+                    FilledTonalButton(
+                        onClick = {
+                            scope.launch {
+                                val lastIndex =
+                                    listState.layoutInfo.totalItemsCount - 1
+                                if (lastIndex >= 0) {
+                                    listState.animateScrollToItem(lastIndex)
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(16.dp)
+                    ) {
+                        Text("↓  Latest")
                     }
                 }
             }
