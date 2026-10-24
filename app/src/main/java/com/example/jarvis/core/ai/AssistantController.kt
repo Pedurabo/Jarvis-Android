@@ -228,6 +228,108 @@ class AssistantController @Inject constructor(
             return@coroutineScope directionsResponse
         }
 
+        // CDI.5.53-A1: Navigate only to an exact, directory-backed
+        // named destination. Existing neighbourhood requests above
+        // retain their established behavior.
+        val namedNavigationMatch = Regex(
+            """^(?:take\s+me\s+to|navigate\s+to|directions\s+to|how\s+(?:do|can)\s+i\s+get\s+to)\s+(.+?)\s*[?.!]?$""",
+            RegexOption.IGNORE_CASE
+        ).matchEntire(query.trim())
+
+        if (namedNavigationMatch != null) {
+            val destinationQuery = namedNavigationMatch.groupValues[1]
+                .trim()
+                .trimEnd('?', '.', '!')
+                .trim()
+                .replace(Regex("""^the\s+""", RegexOption.IGNORE_CASE), "")
+                .replace(
+                    Regex("""\s+in\s+kampala$""", RegexOption.IGNORE_CASE),
+                    ""
+                )
+                .trim()
+
+            if (destinationQuery.length in 3..90) {
+                onUpdate("Checking Kampala directory for destination...")
+
+                val destinationResult = kampalaPlacesRepository.search(
+                    query = destinationQuery
+                )
+
+                val matches = when (destinationResult) {
+                    is KampalaPlacesRepository.SearchResult.Success ->
+                        destinationResult.places.filter { place ->
+                            place.name.trim().equals(
+                                destinationQuery,
+                                ignoreCase = true
+                            )
+                        }
+                    is KampalaPlacesRepository.SearchResult.Failure ->
+                        emptyList()
+                }
+
+                val destinationNotice = when {
+                    matches.size == 1 -> {
+                        val place = matches.single()
+                        pendingNavigationDestination =
+                            "${place.name}, ${place.address}"
+
+                        "I found ${place.name} in the Kampala directory. " +
+                            "Listed address: ${place.address}. " +
+                            "Directory source: ${place.sourceUrl}\n" +
+                            "Source checked: ${place.verifiedAt}\n\n" +
+                            "Where will you be starting from? " +
+                            "Google Maps will calculate the route " +
+                            "after you choose to open directions."
+                    }
+
+                    matches.size > 1 -> {
+                        pendingNavigationDestination = null
+                        "The directory contains multiple entries named " +
+                            "$destinationQuery. Please specify the " +
+                            "location or address so I don't select " +
+                            "the wrong destination."
+                    }
+
+                    else -> {
+                        pendingNavigationDestination = null
+                        "I couldn't confirm an exact directory listing " +
+                            "for $destinationQuery right now. " +
+                            "I won't invent a destination address " +
+                            "or generate an unverified journey."
+                    }
+                }
+
+                val destinationOrigin =
+                    if (matches.size == 1) {
+                        ResponseOrigin.DIRECTORY_RESULT
+                    } else {
+                        ResponseOrigin.DIRECTORY_NOTICE
+                    }
+
+                val destinationResponse = AssistantResponse(
+                    text = destinationNotice,
+                    voiceOptimizedText = destinationNotice,
+                    confidence = EvidenceConfidencePolicy.level(
+                        destinationOrigin
+                    ),
+                    origin = destinationOrigin,
+                    metadata = ResponseMetadata(
+                        route = ModelRouter.Route.LOCAL,
+                        processingTimeMs =
+                            System.currentTimeMillis() - startTime,
+                        toolUsage = 0,
+                        memoryUsage = 0
+                    )
+                )
+
+                conversationRepository.saveMessage("user", query)
+                conversationRepository.saveMessage(
+                    "assistant", destinationNotice
+                )
+
+                return@coroutineScope destinationResponse
+            }
+        }
         val discoveryDecision = KampalaDiscoveryIntelligence.decide(query)
 
         val placesRequest =
