@@ -161,7 +161,17 @@ class AssistantController @Inject constructor(
 
         // CDI.5.53-C1: Handle explicitly supplied two-point
         // journeys before general on-device AI processing.
-        val directJourney = KampalaJourneyIntentResolver.resolve(query)
+        // CDI.5.58-A2: Resolve navigation intent once.
+        val navigationIntent =
+            KampalaNavigationIntentCoordinator.classify(
+                query,
+                awaitingOrigin = pendingNavigationDestination != null
+            )
+
+        val directJourney =
+            (navigationIntent as?
+                KampalaNavigationIntentCoordinator.Intent.CompleteJourney)
+                ?.journey
 
         if (directJourney != null) {
             pendingNavigationDestination = null
@@ -214,14 +224,12 @@ class AssistantController @Inject constructor(
 
             return@coroutineScope response
         }
-        // CDI.5.57-F: Interpret a short location reply only when
-        // a navigation exchange is awaiting an origin.
+        // CDI.5.58-A2: Use the classified origin follow-up.
         val startingPoint =
-            if (pendingNavigationDestination != null) {
-                KampalaOriginFollowUpResolver.resolve(query)
-            } else {
-                null
-            }
+            (navigationIntent as?
+                KampalaNavigationIntentCoordinator.Intent.OriginReply)
+                ?.origin
+
         val pendingDestination = pendingNavigationDestination
 
         if (
@@ -286,7 +294,9 @@ class AssistantController @Inject constructor(
         // CDI.5.57-A: Check user-supplied destination-only requests
         // against exact directory listings before asking for origin.
         val destinationOnly =
-            KampalaJourneyIntentResolver.destinationWithoutOrigin(query)
+            (navigationIntent as?
+                KampalaNavigationIntentCoordinator.Intent.DestinationOnly)
+                ?.destination
 
         if (destinationOnly != null) {
             onUpdate("Checking Kampala directory for destination...")
