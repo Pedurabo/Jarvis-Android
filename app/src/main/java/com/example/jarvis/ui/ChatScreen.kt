@@ -157,15 +157,7 @@ fun ChatScreen(
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
-            ChatHeader()
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp
-            ) {
-                modelSelector()
-            }
+            ChatHeader(modelSelector = modelSelector)
 
             Box(
                 modifier = Modifier
@@ -422,13 +414,14 @@ fun ModelLoadingBar() {
 }
 
 @Composable
-fun ChatHeader() {
-    // M1F-I3C.119C: compact conversational identity.
+fun ChatHeader(modelSelector: @Composable () -> Unit = {}) {
+    // Unified identity and model controls in one header surface.
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp
     ) {
+        Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -465,6 +458,12 @@ fun ChatHeader() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        )
+        modelSelector()
         }
     }
 }
