@@ -120,15 +120,16 @@ fun ChatScreen(
                     ErrorMessageBar(llmError!!)
                 } else if (!isModelReady) {
                     ModelLoadingBar()
-                } else {
-                    ChatInputArea(
-                        text = uiState.currentInputText,
-                        onTextChanged = { viewModel.onTextChanged(it) },
-                        onSendClicked = { viewModel.sendTextMessage() },
-                        isListening = isListening,
-                        onMicClicked = { viewModel.toggleListening() }
-                    )
                 }
+
+                ChatInputArea(
+                    text = uiState.currentInputText,
+                    onTextChanged = { viewModel.onTextChanged(it) },
+                    onSendClicked = { viewModel.sendTextMessage() },
+                    isListening = isListening,
+                    onMicClicked = { viewModel.toggleListening() },
+                    enabled = isModelReady && llmError == null
+                )
             }
         }
     ) { innerPadding ->
@@ -981,7 +982,8 @@ fun ChatInputArea(
     onTextChanged: (String) -> Unit,
     onSendClicked: () -> Unit,
     isListening: Boolean,
-    onMicClicked: () -> Unit
+    onMicClicked: () -> Unit,
+    enabled: Boolean = true
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -998,6 +1000,7 @@ fun ChatInputArea(
             OutlinedTextField(
                 value = text,
                 onValueChange = onTextChanged,
+                enabled = enabled,
                 modifier = Modifier.weight(1f),
                 placeholder = {
                     Text("Message Jarvis...")
@@ -1010,14 +1013,14 @@ fun ChatInputArea(
                 ),
                 keyboardActions = KeyboardActions(
                     onSend = {
-                        if (text.isNotBlank()) onSendClicked()
+                        if (enabled && text.isNotBlank()) onSendClicked()
                     }
                 )
             )
 
             FilledIconButton(
                 onClick = onSendClicked,
-                enabled = text.isNotBlank(),
+                enabled = enabled && text.isNotBlank(),
                 modifier = Modifier.size(48.dp)
             ) {
                 Icon(
@@ -1028,6 +1031,7 @@ fun ChatInputArea(
 
             FilledTonalIconButton(
                 onClick = onMicClicked,
+                enabled = enabled,
                 modifier = Modifier.size(48.dp),
                 colors = if (isListening) {
                     IconButtonDefaults.filledTonalIconButtonColors(
