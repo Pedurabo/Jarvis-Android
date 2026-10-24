@@ -153,6 +153,61 @@ class AssistantController @Inject constructor(
             pendingDestinationChoices = null
         }
 
+        // CDI.5.53-C1: Handle explicitly supplied two-point
+        // journeys before general on-device AI processing.
+        val directJourney = KampalaJourneyIntentResolver.resolve(query)
+
+        if (directJourney != null) {
+            pendingNavigationDestination = null
+            pendingDestinationChoices = null
+
+            onUpdate("Preparing Kampala journey...")
+
+            val mapOrigin = java.net.URLEncoder.encode(
+                "${directJourney.origin}, Kampala, Uganda",
+                "UTF-8"
+            )
+
+            val mapDestination = java.net.URLEncoder.encode(
+                "${directJourney.destination}, Kampala, Uganda",
+                "UTF-8"
+            )
+
+            val mapsUrl =
+                "https://www.google.com/maps/dir/?api=1" +
+                    "&origin=$mapOrigin" +
+                    "&destination=$mapDestination"
+
+            val notice =
+                "Journey: ${directJourney.origin} to " +
+                    "${directJourney.destination}, Kampala. " +
+                    "These are the locations you provided. " +
+                    "Jarvis has not independently verified them " +
+                    "or calculated a route. " +
+                    "Confirm both locations in Google Maps.\n\n" +
+                    "Open directions: $mapsUrl"
+
+            val response = AssistantResponse(
+                text = notice,
+                voiceOptimizedText = notice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", notice)
+
+            return@coroutineScope response
+        }
         // Resolve an explicit starting-point follow-up before general AI.
         val startingPointMatch = Regex(
             """^(?:i(?:'m| am)\s+starting\s+from|starting\s+from|from)\s+(.+?)\s*[.?!]?$""",
