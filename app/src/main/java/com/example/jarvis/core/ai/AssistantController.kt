@@ -45,6 +45,10 @@ class AssistantController @Inject constructor(
     @Volatile
     private var pendingNavigationDestination: String? = null
 
+    // CDI.5.53-B1: Temporary, directory-backed branch choices.
+    @Volatile
+    private var pendingDestinationChoices: List<Pair<String, String>>? = null
+
     private val _events = MutableSharedFlow<AssistantEvent>()
     val events: Flow<AssistantEvent> = _events.asSharedFlow()
 
@@ -79,6 +83,75 @@ class AssistantController @Inject constructor(
 
     suspend fun onUserQuery(query: String, onUpdate: (String) -> Unit): AssistantResponse = coroutineScope {
         val startTime = System.currentTimeMillis()
+
+        // CDI.5.53-B1: Resolve a numbered directory selection.
+        val pendingChoices = pendingDestinationChoices
+        if (pendingChoices != null) {
+            val selectionText = query.trim()
+            val selectionMatch = Regex(
+                """^(?:(?:option|number)\s+)?(\d{1,2})[.]?$""",
+                RegexOption.IGNORE_CASE
+            ).matchEntire(selectionText)
+
+            val cancelSelection = selectionText.equals(
+                "cancel", ignoreCase = true
+            )
+
+            if (selectionMatch != null || cancelSelection) {
+                val selectedIndex = selectionMatch
+                    ?.groupValues?.get(1)?.toIntOrNull()
+                    ?.minus(1)
+
+                val notice = when {
+                    cancelSelection -> {
+                        pendingDestinationChoices = null
+                        pendingNavigationDestination = null
+                        "Destination selection cancelled."
+                    }
+
+                    selectedIndex != null &&
+                        selectedIndex in pendingChoices.indices -> {
+                        val selected = pendingChoices[selectedIndex]
+                        pendingDestinationChoices = null
+                        pendingNavigationDestination =
+                            "${selected.first}, ${selected.second}"
+
+                        "Selected ${selected.first}. " +
+                            "Listed address: ${selected.second}.\n\n" +
+                            "Where will you be starting from? " +
+                            "Google Maps will calculate the route " +
+                            "when you open directions."
+                    }
+
+                    else ->
+                        "Please select a number from 1 to " +
+                            "${pendingChoices.size}, or say cancel."
+                }
+
+                val response = AssistantResponse(
+                    text = notice,
+                    voiceOptimizedText = notice,
+                    confidence = EvidenceConfidencePolicy.level(
+                        ResponseOrigin.DIRECTORY_NOTICE
+                    ),
+                    origin = ResponseOrigin.DIRECTORY_NOTICE,
+                    metadata = ResponseMetadata(
+                        route = ModelRouter.Route.LOCAL,
+                        processingTimeMs =
+                            System.currentTimeMillis() - startTime,
+                        toolUsage = 0,
+                        memoryUsage = 0
+                    )
+                )
+
+                conversationRepository.saveMessage("user", query)
+                conversationRepository.saveMessage("assistant", notice)
+                return@coroutineScope response
+            }
+
+            // Unrelated questions cancel the pending selection.
+            pendingDestinationChoices = null
+        }
 
         // Resolve an explicit starting-point follow-up before general AI.
         val startingPointMatch = Regex(
@@ -269,6 +342,7 @@ class AssistantController @Inject constructor(
 
                 val destinationNotice = when {
                     matches.size == 1 -> {
+                        pendingDestinationChoices = null
                         val place = matches.single()
                         pendingNavigationDestination =
                             "${place.name}, ${place.address}"
@@ -284,13 +358,51 @@ class AssistantController @Inject constructor(
 
                     matches.size > 1 -> {
                         pendingNavigationDestination = null
-                        "The directory contains multiple entries named " +
-                            "$destinationQuery. Please specify the " +
-                            "location or address so I don't select " +
-                            "the wrong destination."
+
+                        if (matches.size > 10) {
+                            pendingDestinationChoices = null
+                            "The directory returned more than ten " +
+                                "matching destinations for $destinationQuery. " +
+                                "Please provide a more specific location."
+                        } else {
+                            val choices = matches.map { place ->
+                                place.name to place.address
+                            }.distinct()
+
+                            if (choices.size == 1) {
+                                pendingDestinationChoices = null
+                                "The directory returned repeated listings " +
+                                    "for $destinationQuery. Please provide " +
+                                    "a more specific destination."
+                            } else {
+                                pendingDestinationChoices = choices
+
+                                buildString {
+                                    appendLine(
+                                        "I found several directory listings " +
+                                            "for $destinationQuery:"
+                                    )
+                                    appendLine()
+
+                                    choices.forEachIndexed { index, choice ->
+                                        appendLine(
+                                            "${index + 1}. ${choice.first} — " +
+                                                choice.second
+                                        )
+                                    }
+
+                                    appendLine()
+                                    append(
+                                        "Reply with the number of the " +
+                                            "destination you want, or say cancel."
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     else -> {
+                        pendingDestinationChoices = null
                         pendingNavigationDestination = null
                         "I couldn't confirm an exact directory listing " +
                             "for $destinationQuery right now. " +
@@ -328,6 +440,117 @@ class AssistantController @Inject constructor(
                 )
 
                 return@coroutineScope destinationResponse
+            }
+        }
+        // CDI.5.53-B3: Search a named business on a requested road
+        // through the existing directory before generic service notices.
+        val businessRoadRequest = Regex(
+            """^(?:find(?:\s+me)?|locate|show\s+me|where\s+is)\s+(?:a\s+|an\s+|the\s+)?(.+?)\s+(?:on|along)\s+([A-Za-z][A-Za-z0-9 '\-]*\s+(?:road|street|avenue|lane|drive))\s*[?.!]*$""",
+            RegexOption.IGNORE_CASE
+        ).matchEntire(query.trim())
+
+        if (businessRoadRequest != null) {
+            val businessName = businessRoadRequest.groupValues[1]
+                .trim()
+                .replace(Regex("""\s+"""), " ")
+
+            val requestedRoad = businessRoadRequest.groupValues[2]
+                .trim()
+                .replace(Regex("""\s+"""), " ")
+
+            if (
+                businessName.length in 3..80 &&
+                requestedRoad.length in 5..80
+            ) {
+                onUpdate("Searching Kampala directory for $businessName...")
+
+                val directoryResult = kampalaPlacesRepository.search(
+                    query = businessName
+                )
+
+                val matchingPlaces = when (directoryResult) {
+                    is KampalaPlacesRepository.SearchResult.Success ->
+                        directoryResult.places.filter { place ->
+                            place.name.trim().equals(
+                                businessName,
+                                ignoreCase = true
+                            ) &&
+                                place.address.contains(
+                                    requestedRoad,
+                                    ignoreCase = true
+                                )
+                        }
+
+                    is KampalaPlacesRepository.SearchResult.Failure ->
+                        emptyList()
+                }
+
+                val answer = when (directoryResult) {
+                    is KampalaPlacesRepository.SearchResult.Failure ->
+                        "I couldn't access the Kampala directory to " +
+                            "check $businessName on $requestedRoad. " +
+                            "Please try again when the service is available."
+
+                    is KampalaPlacesRepository.SearchResult.Success ->
+                        if (matchingPlaces.isEmpty()) {
+                            "I couldn't confirm a listing for " +
+                                "$businessName on $requestedRoad in my " +
+                                "current Kampala directory. This doesn't " +
+                                "mean the business isn't there. " +
+                                "I won't invent an address or opening hours."
+                        } else {
+                            buildString {
+                                appendLine("Kampala Places Directory")
+                                appendLine()
+
+                                matchingPlaces.forEachIndexed { index, place ->
+                                    if (index > 0) appendLine()
+
+                                    appendLine(place.name)
+                                    appendLine("Address: ${place.address}")
+                                    appendLine("Area: ${place.area}")
+                                    appendLine(
+                                        "Source: ${place.sourceUrl}"
+                                    )
+                                    appendLine(
+                                        "Source checked: ${place.verifiedAt}"
+                                    )
+                                }
+
+                                appendLine()
+                                append(
+                                    "Directory information only. " +
+                                        "Confirm current opening hours and " +
+                                        "availability with the business."
+                                )
+                            }
+                        }
+                }
+
+                val origin = if (matchingPlaces.isNotEmpty()) {
+                    ResponseOrigin.DIRECTORY_RESULT
+                } else {
+                    ResponseOrigin.DIRECTORY_NOTICE
+                }
+
+                val response = AssistantResponse(
+                    text = answer,
+                    voiceOptimizedText = answer,
+                    confidence = EvidenceConfidencePolicy.level(origin),
+                    origin = origin,
+                    metadata = ResponseMetadata(
+                        route = ModelRouter.Route.LOCAL,
+                        processingTimeMs =
+                            System.currentTimeMillis() - startTime,
+                        toolUsage = 0,
+                        memoryUsage = 0
+                    )
+                )
+
+                conversationRepository.saveMessage("user", query)
+                conversationRepository.saveMessage("assistant", answer)
+
+                return@coroutineScope response
             }
         }
         val discoveryDecision = KampalaDiscoveryIntelligence.decide(query)
