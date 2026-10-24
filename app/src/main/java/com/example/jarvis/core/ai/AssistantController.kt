@@ -41,6 +41,10 @@ class AssistantController @Inject constructor(
     private val MAX_STEPS = 3
     private val promptBuilder = JarvisPromptBuilder()
 
+    // Active navigation request only; not persistent journey history.
+    @Volatile
+    private var pendingNavigationDestination: String? = null
+
     private val _events = MutableSharedFlow<AssistantEvent>()
     val events: Flow<AssistantEvent> = _events.asSharedFlow()
 
@@ -76,6 +80,68 @@ class AssistantController @Inject constructor(
     suspend fun onUserQuery(query: String, onUpdate: (String) -> Unit): AssistantResponse = coroutineScope {
         val startTime = System.currentTimeMillis()
 
+        // Resolve an explicit starting-point follow-up before general AI.
+        val startingPointMatch = Regex(
+            """^(?:i(?:'m| am)\s+starting\s+from|starting\s+from|from)\s+(.+?)\s*[.?!]?$""",
+            RegexOption.IGNORE_CASE
+        ).matchEntire(query.trim())
+
+        val startingPoint = startingPointMatch
+            ?.groupValues
+            ?.get(1)
+            ?.trim()
+            ?.trimEnd('.', '?', '!')
+            ?.trim()
+
+        val pendingDestination = pendingNavigationDestination
+
+        if (
+            pendingDestination != null &&
+            !startingPoint.isNullOrBlank() &&
+            startingPoint.length <= 80
+        ) {
+            pendingNavigationDestination = null
+
+            onUpdate("Checking navigation context...")
+
+            val navigationNotice =
+                "Your starting point is $startingPoint and your " +
+                    "destination is $pendingDestination. " +
+                    "I understand the journey, but I don't yet have " +
+                    "verified directions for this route. " +
+                    "Please use a trusted navigation service for " +
+                    "current routing. I won't invent roads, " +
+                    "distances or travel times."
+
+            val navigationResponse = AssistantResponse(
+                text = navigationNotice,
+                voiceOptimizedText = navigationNotice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage(
+                "assistant", navigationNotice
+            )
+
+            return@coroutineScope navigationResponse
+        }
+
+        // A different question ends the pending navigation exchange.
+        if (pendingDestination != null) {
+            pendingNavigationDestination = null
+        }
+
         // CDI.5.52-B3: Keep explicit Kampala directions requests
         // away from ungrounded local-model route generation.
         val directionsRequest = Regex(
@@ -108,6 +174,7 @@ class AssistantController @Inject constructor(
                 )
 
         if (isKampalaDirections) {
+            pendingNavigationDestination = requestedDestination
             onUpdate("Checking Kampala directions coverage...")
 
             val destination = requestedDestination!!
