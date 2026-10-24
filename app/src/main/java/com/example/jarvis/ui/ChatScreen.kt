@@ -554,7 +554,7 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
 
                         MessageOrigin.KNOWLEDGE_RESULT -> {
                             Text(
-                                text = "Knowledge Result",
+                                text = "Knowledge source · Check review date and references",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -562,7 +562,7 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
 
                         MessageOrigin.KNOWLEDGE_NOTICE -> {
                             Text(
-                                text = "Knowledge Notice",
+                                text = "Verified knowledge unavailable",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -570,7 +570,7 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
 
                         MessageOrigin.DIRECTORY_RESULT -> {
                             Text(
-                                text = "Directory Result",
+                                text = "Directory lookup · Confirm current details",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -578,14 +578,21 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
 
                         MessageOrigin.DIRECTORY_NOTICE -> {
                             Text(
-                                text = "Directory Notice",
+                                text = "Directory information unavailable or incomplete",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
                         MessageOrigin.AI_RESPONSE -> {
-                            ConfidenceIndicator(message.confidence)
+                            Column {
+                                ConfidenceIndicator(message.confidence)
+                                Text(
+                                    text = "AI-generated · Verify current information",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
