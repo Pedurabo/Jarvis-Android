@@ -33,7 +33,7 @@
         <package android:name="com.example.gemmacompanion" />
     </queries>
     <application
-        android:name=".GemmaIpcHarnessApp"
+        android:name=".KampalaJarvisApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -45,7 +45,7 @@
         android:usesCleartextTraffic="true">
 
         <activity
-            android:name=".GemmaIpcHarnessActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.Jarvis"
