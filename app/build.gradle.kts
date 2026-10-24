@@ -7,7 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.hilt.android)
-// CDI.5.22-B isolated test: alias(libs.plugins.google.services)
+    alias(libs.plugins.google.services)
 }
 
 android {
