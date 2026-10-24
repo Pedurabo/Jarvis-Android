@@ -1,10 +1,12 @@
 package com.example.jarvis.core.ai
 
 /**
- * Resolves explicitly supplied two-point journeys.
+ * CDI.5.55-A: Structured recognition of explicitly supplied
+ * origin-to-destination journeys.
  *
- * This component does not verify locations, calculate routes,
- * retrieve traffic conditions, or invoke Android actions.
+ * This resolver only extracts user-provided place text.
+ * It never verifies locations, calculates routes, supplies traffic
+ * conditions, or performs device actions.
  */
 internal object KampalaJourneyIntentResolver {
 
@@ -13,56 +15,109 @@ internal object KampalaJourneyIntentResolver {
         val destination: String
     )
 
-    // CDI.5.53-C5: Accept "currently in" without a pronoun.
-    private val patterns = listOf(
+    private val whitespace = Regex("""\s+""")
+
+    private val originIntroduction = Regex(
+        """^(?:(?:i'm|i\s+am|am)\s+)?(?:(?:currently|cure)\s+)?(?:in|at)\s+(.+)$""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val travelRequests = listOf(
         Regex(
-            """^(?:(?:(?:i'm|i\s+am|am)\s+)?(?:currently\s+)?(?:in|at)\s+)(.+?)\s*,?\s*(?:and\s+)?(?:i\s+)?(?:need|want|have)\s+to\s+(?:get|go)\s+to\s+(.+?)$""",
+            """\s*,?\s*(?:and\s+)?(?:i\s+)?(?:need|want|have)\s+to\s+(?:get|go|reach)(?:\s+to)?\s+""",
             RegexOption.IGNORE_CASE
         ),
         Regex(
-            """^(?:how\s+(?:do|can)\s+i\s+get\s+)?from\s+(.+?)\s+to\s+(.+?)$""",
-            RegexOption.IGNORE_CASE
-        ),
-        Regex(
-            """^directions\s+from\s+(.+?)\s+to\s+(.+?)$""",
+            """\s*,?\s*(?:(?:can|could)\s+you|please)\s+(?:direct|guide|take)\s+me\s+to\s+""",
             RegexOption.IGNORE_CASE
         )
     )
 
-    private val placePattern = Regex(
-        """[A-Za-z][A-Za-z '\-]{1,78}"""
+    private val explicitFromTo = listOf(
+        Regex(
+            """^(?:how\s+(?:do|can)\s+i\s+get\s+)?from\s+(.+?)\s+to\s+(.+)$""",
+            RegexOption.IGNORE_CASE
+        ),
+        Regex(
+            """^directions\s+from\s+(.+?)\s+to\s+(.+)$""",
+            RegexOption.IGNORE_CASE
+        )
     )
 
-    fun resolve(input: String): Journey? {
-        val text = input.trim()
-            .trimEnd('.', '?', '!')
-            .replace(Regex("""\s+"""), " ")
+    private val politeEnding = Regex(
+        """\s*,?\s*please\s+(?:direct|guide)\s+me\s*$""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val placePattern = Regex(
+        """[A-Za-z][A-Za-z ,'\-]{1,79}"""
+    )
+
+    private fun cleanPlace(value: String): String =
+        value.trim()
+            .trim(' ', ',', '.', '?', '!')
+            .replace(whitespace, " ")
             .trim()
 
-        if (text.isBlank()) return null
+    private fun createJourney(
+        originText: String,
+        destinationText: String
+    ): Journey? {
+        val origin = cleanPlace(originText)
+        val destination = cleanPlace(
+            destinationText.replace(politeEnding, "")
+        )
 
-        for (pattern in patterns) {
-            val match = pattern.matchEntire(text) ?: continue
+        if (
+            origin.length !in 2..80 ||
+            destination.length !in 2..80 ||
+            !placePattern.matches(origin) ||
+            !placePattern.matches(destination) ||
+            origin.equals(destination, ignoreCase = true)
+        ) {
+            return null
+        }
 
-            val origin = match.groupValues[1].trim()
-            val destination = match.groupValues[2].trim()
+        return Journey(origin, destination)
+    }
 
-            if (
-                origin.length !in 2..80 ||
-                destination.length !in 2..80 ||
-                !placePattern.matches(origin) ||
-                !placePattern.matches(destination) ||
-                origin.equals(destination, ignoreCase = true)
-            ) {
-                return null
-            }
+    fun resolve(input: String): Journey? {
+        val normalized = input.trim()
+            .replace(whitespace, " ")
+            .trim()
 
-            return Journey(
-                origin = origin,
-                destination = destination
+        if (normalized.isBlank()) return null
+
+        // Explicit "from X to Y" journeys.
+        for (pattern in explicitFromTo) {
+            val match = pattern.matchEntire(
+                normalized.trimEnd('.', '?', '!')
+            ) ?: continue
+
+            return createJourney(
+                match.groupValues[1],
+                match.groupValues[2]
             )
         }
 
-        return null
+        // Separate the origin phrase from travel intent.
+        val originMatch = originIntroduction.matchEntire(
+            normalized
+        ) ?: return null
+
+        val remainder = originMatch.groupValues[1]
+
+        val matchedTravel = travelRequests
+            .mapNotNull { pattern ->
+                pattern.find(remainder)
+            }
+            .minByOrNull { match ->
+                match.range.first
+            } ?: return null
+
+        return createJourney(
+            remainder.substring(0, matchedTravel.range.first),
+            remainder.substring(matchedTravel.range.last + 1)
+        )
     }
 }
