@@ -7,6 +7,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -67,8 +71,14 @@ fun MainContent(
         )
     }
 
-    Column {
-        Row(modifier = Modifier.fillMaxWidth()) {
+    ChatScreen(modelSelector = {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             FilterChip(
                 selected = !selectedGemma,
                 onClick = {
@@ -87,7 +97,5 @@ fun MainContent(
                 label = { Text("Gemma 4 E2B") }
             )
         }
-
-        ChatScreen()
-    }
+    })
 }

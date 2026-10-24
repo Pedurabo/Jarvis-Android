@@ -47,7 +47,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.jarvis.core.ai.ConfidenceLevel
 
 @Composable
-fun ChatScreen(viewModel: JarvisViewModel = hiltViewModel()) {
+fun ChatScreen(
+    viewModel: JarvisViewModel = hiltViewModel(),
+    modelSelector: @Composable () -> Unit = {}
+) {
     val uiState by viewModel.uiState.collectAsState()
     val pendingAction by viewModel.pendingToolAction.collectAsState()
     val isListening by viewModel.isListening.collectAsState()
@@ -135,6 +138,14 @@ fun ChatScreen(viewModel: JarvisViewModel = hiltViewModel()) {
                 .fillMaxSize()
         ) {
             ChatHeader()
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
+            ) {
+                modelSelector()
+            }
 
             LazyColumn(
                 state = listState,
@@ -456,10 +467,23 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
-                JarvisLinkedAnswer(
-                    messageText = message.text,
-                    onLongClick = onLongClick
-                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Box(
+                        modifier = Modifier.padding(
+                            horizontal = 16.dp,
+                            vertical = 14.dp
+                        )
+                    ) {
+                        JarvisLinkedAnswer(
+                            messageText = message.text,
+                            onLongClick = onLongClick
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -910,34 +934,46 @@ fun ConfidenceIndicator(level: ConfidenceLevel) {
 
 @Composable
 fun TypingIndicator(status: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Start
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
-        Box(
-            modifier = Modifier
-                .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(20.dp))
-                .padding(horizontal = 16.dp, vertical = 10.dp)
+        Row(
+            modifier = Modifier.padding(
+                horizontal = 16.dp,
+                vertical = 14.dp
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.primary
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = "Jarvis is working",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.width(12.dp))
+
                 Text(
                     text = status,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
     }
 }
+
 
 @Composable
 fun ChatInputArea(
@@ -947,15 +983,15 @@ fun ChatInputArea(
     isListening: Boolean,
     onMicClicked: () -> Unit
 ) {
-    // M1F-I3C.119C: compact expandable composer, with voice preserved.
     Surface(
+        modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -964,14 +1000,11 @@ fun ChatInputArea(
                 onValueChange = onTextChanged,
                 modifier = Modifier.weight(1f),
                 placeholder = {
-                    Text(
-                        "Ask about Kampala...",
-                        maxLines = 1
-                    )
+                    Text("Message Jarvis...")
                 },
                 minLines = 1,
-                maxLines = 4,
-                shape = RoundedCornerShape(24.dp),
+                maxLines = 5,
+                shape = RoundedCornerShape(20.dp),
                 keyboardOptions = KeyboardOptions(
                     imeAction = ImeAction.Send
                 ),
@@ -979,48 +1012,42 @@ fun ChatInputArea(
                     onSend = {
                         if (text.isNotBlank()) onSendClicked()
                     }
-                ),
-                trailingIcon = {
-                    if (text.isNotBlank()) {
-                        IconButton(onClick = onSendClicked) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "Send message",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
+                )
             )
 
-            Surface(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .clickable { onMicClicked() },
-                shape = CircleShape,
-                color = if (isListening)
-                    MaterialTheme.colorScheme.error
-                else
-                    MaterialTheme.colorScheme.primary,
-                contentColor = if (isListening)
-                    MaterialTheme.colorScheme.onError
-                else
-                    MaterialTheme.colorScheme.onPrimary
+            FilledIconButton(
+                onClick = onSendClicked,
+                enabled = text.isNotBlank(),
+                modifier = Modifier.size(48.dp)
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = if (isListening)
-                            Icons.Default.MicOff
-                        else
-                            Icons.Default.Mic,
-                        contentDescription = if (isListening)
-                            "Stop listening"
-                        else
-                            "Start listening",
-                        modifier = Modifier.size(22.dp)
+                Icon(
+                    Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send message"
+                )
+            }
+
+            FilledTonalIconButton(
+                onClick = onMicClicked,
+                modifier = Modifier.size(48.dp),
+                colors = if (isListening) {
+                    IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
                     )
+                } else {
+                    IconButtonDefaults.filledTonalIconButtonColors()
                 }
+            ) {
+                Icon(
+                    imageVector = if (isListening)
+                        Icons.Default.MicOff
+                    else
+                        Icons.Default.Mic,
+                    contentDescription = if (isListening)
+                        "Stop listening"
+                    else
+                        "Start listening"
+                )
             }
         }
     }

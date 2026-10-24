@@ -5,10 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.jarvis.core.ai.AssistantController
 import com.example.jarvis.core.ai.ConfidenceLevel
 import com.example.jarvis.core.ai.ConversationRepository
+import com.example.jarvis.core.chat.LocalChatRepository
+import android.util.Log
 import com.example.jarvis.core.ai.LLMManager
 import com.example.jarvis.core.voice.VoiceManager
 import com.example.jarvis.skills.SkillRegistry
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,9 +24,11 @@ class JarvisViewModel @Inject constructor(
     private val voiceManager: VoiceManager,
     private val skillRegistry: SkillRegistry,
     private val conversationRepository: ConversationRepository,
+    private val localChatRepository: LocalChatRepository,
     private val assistantController: AssistantController
 ) : ViewModel() {
 
+    private val historyReady = CompletableDeferred<Unit>()
     private val _uiState = MutableStateFlow(JarvisUiState())
     val uiState: StateFlow<JarvisUiState> = _uiState.asStateFlow()
     val pendingToolAction = skillRegistry.pendingToolAction
@@ -51,15 +56,63 @@ class JarvisViewModel @Inject constructor(
     val llmError = llmManager.error
 
     init {
-        // Load recent chat history from Firestore
+        // Local-first restoration. Merge to avoid losing messages
+        // submitted while history is loading.
         viewModelScope.launch {
-            val history = conversationRepository.getLastMessages(20)
-            if (history.isNotEmpty()) {
-                _uiState.value = _uiState.value.copy(
-                    messages = history.map {
-                        Message(text = it.text, isUser = it.role == "user", timestamp = it.timestamp)
+            try {
+                val saved = localChatRepository.load()
+
+                val restored = if (saved.isNotEmpty()) {
+                    saved.map {
+                        Message(
+                            text = it.text,
+                            isUser = it.role == "user",
+                            timestamp = it.timestamp,
+                            origin = enumValueOrDefault(
+                                it.origin,
+                                MessageOrigin.AI_RESPONSE
+                            ),
+                            confidence = enumValueOrDefault(
+                                it.confidence,
+                                ConfidenceLevel.MEDIUM
+                            )
+                        )
                     }
-                )
+                } else {
+                    val cloudHistory = conversationRepository.getLastMessages(20)
+                    cloudHistory.map {
+                        Message(
+                            text = it.text,
+                            isUser = it.role == "user",
+                            timestamp = it.timestamp
+                        )
+                    }
+                }
+
+                if (saved.isEmpty()) {
+                    restored.forEach { message ->
+                        localChatRepository.save(
+                            role = if (message.isUser) "user" else "assistant",
+                            text = message.text,
+                            timestamp = message.timestamp,
+                            origin = message.origin.name,
+                            confidence = message.confidence.name
+                        )
+                    }
+                }
+
+                val current = _uiState.value
+                val merged = (restored + current.messages)
+                    .distinctBy {
+                        Triple(it.timestamp, it.isUser, it.text)
+                    }
+                    .sortedBy { it.timestamp }
+
+                _uiState.value = current.copy(messages = merged)
+            } catch (e: Exception) {
+                Log.e("JarvisChatHistory", "Unable to restore history", e)
+            } finally {
+                historyReady.complete(Unit)
             }
         }
 
@@ -103,9 +156,12 @@ class JarvisViewModel @Inject constructor(
 
     private fun processCommand(command: String) {
         _uiState.value = JarvisMessageReducer.started(_uiState.value, command)
+        val userMessage = _uiState.value.messages.last()
 
         viewModelScope.launch {
             try {
+                historyReady.await()
+                saveLocalMessage(userMessage)
                 val assistantResponse = assistantController.onUserQuery(command) { status ->
                     _uiState.value = _uiState.value.copy(processingStatus = status)
                 }
@@ -146,6 +202,8 @@ class JarvisViewModel @Inject constructor(
                     origin = messageOrigin
                 )
 
+                saveLocalMessage(_uiState.value.messages.last())
+
                 // Text-first behavior: do not speak replies automatically.
                 // Microphone input remains available through toggleListening().
 
@@ -153,10 +211,29 @@ class JarvisViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 _uiState.value = JarvisMessageReducer.failed(_uiState.value)
+                saveLocalMessage(_uiState.value.messages.last())
             }
         }
     }
 
+    private suspend fun saveLocalMessage(message: Message) {
+        try {
+            localChatRepository.save(
+                role = if (message.isUser) "user" else "assistant",
+                text = message.text,
+                timestamp = message.timestamp,
+                origin = message.origin.name,
+                confidence = message.confidence.name
+            )
+        } catch (e: Exception) {
+            Log.e("JarvisChatHistory", "Unable to save local message", e)
+        }
+    }
+
+    private inline fun <reified T : Enum<T>> enumValueOrDefault(
+        value: String,
+        fallback: T
+    ): T = enumValues<T>().firstOrNull { it.name == value } ?: fallback
     fun submitFeedback(query: String, failedResponse: String, correction: String) {
         viewModelScope.launch {
             assistantController.provideFeedback(query, failedResponse, correction)
