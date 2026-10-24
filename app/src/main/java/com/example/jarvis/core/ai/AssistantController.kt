@@ -76,6 +76,79 @@ class AssistantController @Inject constructor(
     suspend fun onUserQuery(query: String, onUpdate: (String) -> Unit): AssistantResponse = coroutineScope {
         val startTime = System.currentTimeMillis()
 
+        // CDI.5.52-B3: Keep explicit Kampala directions requests
+        // away from ungrounded local-model route generation.
+        val directionsRequest = Regex(
+            """^(?:how\s+(?:do|can)\s+i\s+get\s+to|directions\s+to)\s+(.+?)\s*\??$""",
+            RegexOption.IGNORE_CASE
+        ).matchEntire(query.trim())
+
+        val requestedDestination = directionsRequest
+            ?.groupValues
+            ?.get(1)
+            ?.trim()
+            ?.trimEnd('?')
+            ?.trim()
+
+        val localAreas = setOf(
+            "muyenga", "ntinda", "kololo", "nakasero",
+            "kisementi", "old kampala", "bugolobi",
+            "makindye"
+        )
+
+        val normalizedDestination = requestedDestination
+            ?.lowercase()
+            ?.replace(Regex("""\s+"""), " ")
+
+        val isKampalaDirections =
+            normalizedDestination != null &&
+                (
+                    normalizedDestination in localAreas ||
+                        normalizedDestination.endsWith(" in kampala")
+                )
+
+        if (isKampalaDirections) {
+            onUpdate("Checking Kampala directions coverage...")
+
+            val destination = requestedDestination!!
+            val isMuyenga = normalizedDestination == "muyenga"
+
+            val directionsNotice = if (isMuyenga) {
+                "Muyenga is an area of Kampala. " +
+                    "Where will you be starting from? " +
+                    "I don't have a verified route for this journey yet, " +
+                    "so I won't invent directions, distances or travel times."
+            } else {
+                "Where will you be starting from for your journey to " +
+                    "$destination? I don't have a verified route for " +
+                    "this journey yet, so I won't invent directions, " +
+                    "distances or travel times."
+            }
+
+            val directionsResponse = AssistantResponse(
+                text = directionsNotice,
+                voiceOptimizedText = directionsNotice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage(
+                "assistant", directionsNotice
+            )
+
+            return@coroutineScope directionsResponse
+        }
+
         val discoveryDecision = KampalaDiscoveryIntelligence.decide(query)
 
         val placesRequest =

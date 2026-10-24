@@ -3,6 +3,8 @@ package com.example.jarvis.core.network
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 import java.io.IOException
+import java.net.URI
+import java.time.LocalDate
 import javax.inject.Inject
 
 class KampalaPlacesRepository @Inject constructor(
@@ -32,6 +34,12 @@ class KampalaPlacesRepository @Inject constructor(
                 SearchResult.Failure(
                     "The Kampala places service returned an unexpected response."
                 )
+            } else if (response.places.any { !isValidPlace(it) }) {
+                SearchResult.Failure(
+                    "The Kampala places service returned incomplete or " +
+                        "invalid listing information. No unvalidated " +
+                        "directory results will be displayed."
+                )
             } else {
                 SearchResult.Success(response.places)
             }
@@ -50,5 +58,35 @@ class KampalaPlacesRepository @Inject constructor(
                 "Unable to read the Kampala places information right now."
             )
         }
+    }
+
+    private fun isValidPlace(place: KampalaPlace): Boolean {
+        if (
+            place.id.isBlank() ||
+            place.name.isBlank() ||
+            place.category.isBlank() ||
+            place.area.isBlank() ||
+            place.address.isBlank()
+        ) {
+            return false
+        }
+
+        val validDate = try {
+            val date = LocalDate.parse(place.verifiedAt)
+            !date.isAfter(LocalDate.now())
+        } catch (_: Exception) {
+            false
+        }
+
+        val validSource = try {
+            val uri = URI(place.sourceUrl)
+            uri.scheme.equals("https", ignoreCase = true) &&
+                !uri.host.isNullOrBlank() &&
+                uri.userInfo == null
+        } catch (_: Exception) {
+            false
+        }
+
+        return validDate && validSource
     }
 }
