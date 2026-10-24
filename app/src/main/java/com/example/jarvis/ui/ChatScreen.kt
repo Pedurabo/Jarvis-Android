@@ -616,6 +616,134 @@ private fun JarvisLinkedAnswer(
 ) {
     // M1F-I3C.119J: compact institutional source references.
     val uriHandler = LocalUriHandler.current
+
+    // CDI.5.52-E1: Recognize only Jarvis-generated Google Maps
+    // directions handoffs. Never treat arbitrary links as journeys.
+    val journey = remember(messageText) {
+        runCatching {
+            val prefix = "Open directions: "
+            val link = messageText.lineSequence()
+                .firstOrNull { it.startsWith(prefix) }
+                ?.removePrefix(prefix)
+                ?.trim()
+                ?: return@runCatching null
+
+            val uri = java.net.URI(link)
+
+            if (
+                uri.scheme != "https" ||
+                uri.host != "www.google.com" ||
+                uri.path != "/maps/dir/" ||
+                uri.userInfo != null
+            ) {
+                return@runCatching null
+            }
+
+            val parameters = uri.rawQuery
+                ?.split("&")
+                ?.mapNotNull { part ->
+                    val pieces = part.split("=", limit = 2)
+                    if (pieces.size == 2)
+                        pieces[0] to pieces[1]
+                    else null
+                }
+                ?.toMap()
+                ?: return@runCatching null
+
+            if (parameters["api"] != "1") {
+                return@runCatching null
+            }
+
+            val origin = java.net.URLDecoder.decode(
+                parameters["origin"] ?: return@runCatching null,
+                "UTF-8"
+            ).removeSuffix(", Kampala, Uganda")
+
+            val destination = java.net.URLDecoder.decode(
+                parameters["destination"] ?: return@runCatching null,
+                "UTF-8"
+            ).removeSuffix(", Kampala, Uganda")
+
+            if (
+                origin.isBlank() ||
+                destination.isBlank() ||
+                origin.length > 80 ||
+                destination.length > 80
+            ) {
+                return@runCatching null
+            }
+
+            Triple(origin, destination, link)
+        }.getOrNull()
+    }
+
+    if (journey != null) {
+        val (origin, destination, directionsUrl) = journey
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Your journey",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "FROM",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = origin,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "TO",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = destination,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+
+            Text(
+                text = "Jarvis has not verified this route. " +
+                    "Confirm the locations and directions in Google Maps.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            HorizontalDivider()
+
+            OutlinedButton(
+                onClick = {
+                    try {
+                        uriHandler.openUri(directionsUrl)
+                    } catch (_: Exception) {
+                        // No compatible maps application or browser available.
+                    }
+                }
+            ) {
+                Text("↗  Open directions")
+            }
+        }
+
+        return
+    }
+
     val linkColor = MaterialTheme.colorScheme.primary
 
     val urlPattern = remember {
