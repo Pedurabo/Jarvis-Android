@@ -1,6 +1,18 @@
 package com.example.jarvis
 
 import android.Manifest
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.Icons
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -50,7 +62,7 @@ class MainActivity : ComponentActivity() {
 fun MainContent(
     onGemmaChanged: (Boolean) -> Unit
 ) {
-    var selectedGemma by remember { mutableStateOf(false) }
+    var selectedGemma by rememberSaveable { mutableStateOf(false) }
     var hasPermission by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -59,9 +71,11 @@ fun MainContent(
         hasPermission = permissions.values.all { it }
     }
 
-    LaunchedEffect(Unit) {
-        onGemmaChanged(false)
+    LaunchedEffect(selectedGemma) {
+        onGemmaChanged(selectedGemma)
+    }
 
+    LaunchedEffect(Unit) {
         permissionLauncher.launch(
             arrayOf(
                 Manifest.permission.RECORD_AUDIO,
@@ -71,31 +85,86 @@ fun MainContent(
         )
     }
 
+    var selectorExpanded by remember { mutableStateOf(false) }
+
     ChatScreen(modelSelector = {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            FilterChip(
-                selected = !selectedGemma,
-                onClick = {
-                    selectedGemma = false
-                    onGemmaChanged(false)
-                },
-                label = { Text("Llama 3.2 1B") }
-            )
+            Column {
+                Text(
+                    text = "Active model",
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Text(
+                    text = "Choose your local AI",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
-            FilterChip(
-                selected = selectedGemma,
-                onClick = {
-                    selectedGemma = true
-                    onGemmaChanged(true)
-                },
-                label = { Text("Gemma 4 E2B") }
-            )
+            Box {
+                OutlinedButton(
+                    onClick = { selectorExpanded = true }
+                ) {
+                    Text(
+                        if (selectedGemma)
+                            "Gemma 4 E2B"
+                        else
+                            "Llama 3.2 1B"
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        Icons.Default.ArrowDropDown,
+                        contentDescription = null
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = selectorExpanded,
+                    onDismissRequest = {
+                        selectorExpanded = false
+                    }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Llama 3.2 1B") },
+                        onClick = {
+                            selectorExpanded = false
+                            selectedGemma = false
+                            onGemmaChanged(false)
+                        },
+                        leadingIcon = {
+                            if (!selectedGemma) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null
+                                )
+                            }
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text("Gemma 4 E2B") },
+                        onClick = {
+                            selectorExpanded = false
+                            selectedGemma = true
+                            onGemmaChanged(true)
+                        },
+                        leadingIcon = {
+                            if (selectedGemma) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null
+                                )
+                            }
+                        }
+                    )
+                }
+            }
         }
     })
 }
