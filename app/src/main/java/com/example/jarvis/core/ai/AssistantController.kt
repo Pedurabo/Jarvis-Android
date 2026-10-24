@@ -104,14 +104,26 @@ class AssistantController @Inject constructor(
 
             onUpdate("Checking navigation context...")
 
+            val mapOrigin = java.net.URLEncoder.encode(
+                "$startingPoint, Kampala, Uganda",
+                "UTF-8"
+            )
+            val mapDestination = java.net.URLEncoder.encode(
+                "$pendingDestination, Kampala, Uganda",
+                "UTF-8"
+            )
+
+            val mapsUrl =
+                "https://www.google.com/maps/dir/?api=1" +
+                    "&origin=$mapOrigin" +
+                    "&destination=$mapDestination"
+
             val navigationNotice =
-                "Your starting point is $startingPoint and your " +
-                    "destination is $pendingDestination. " +
-                    "I understand the journey, but I don't yet have " +
-                    "verified directions for this route. " +
-                    "Please use a trusted navigation service for " +
-                    "current routing. I won't invent roads, " +
-                    "distances or travel times."
+                "Journey: $startingPoint to $pendingDestination, Kampala. " +
+                    "I haven't calculated or verified a route. " +
+                    "You can open Google Maps to check the available " +
+                    "directions and confirm both locations.\n\n" +
+                    "Open directions: $mapsUrl"
 
             val navigationResponse = AssistantResponse(
                 text = navigationNotice,
