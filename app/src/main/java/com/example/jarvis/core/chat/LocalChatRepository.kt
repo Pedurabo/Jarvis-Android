@@ -19,6 +19,28 @@ class LocalChatRepository @Inject constructor(
 
     private val dao = database.chatMessageDao()
 
+    private val chatPreferences = context.getSharedPreferences(
+        "jarvis_chat_history_preferences",
+        Context.MODE_PRIVATE
+    )
+
+    fun wasCleared(): Boolean =
+        chatPreferences.getBoolean("main_chat_cleared", false)
+
+    suspend fun clear() {
+        dao.deleteMessages("main_chat")
+
+        val recorded = chatPreferences.edit()
+            .putBoolean("main_chat_cleared", true)
+            .commit()
+
+        if (!recorded) {
+            throw IllegalStateException(
+                "Unable to save the chat-clear marker."
+            )
+        }
+    }
+
     suspend fun save(
         role: String,
         text: String,

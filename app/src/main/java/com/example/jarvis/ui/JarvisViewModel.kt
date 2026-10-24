@@ -12,6 +12,8 @@ import com.example.jarvis.core.voice.VoiceManager
 import com.example.jarvis.skills.SkillRegistry
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,6 +31,10 @@ class JarvisViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val historyReady = CompletableDeferred<Unit>()
+
+    // CDI.5.54-A: Cancel outstanding responses before deleting history.
+    private val activeRequestJobs = mutableSetOf<Job>()
+    private var clearingChat = false
     private val _uiState = MutableStateFlow(JarvisUiState())
     val uiState: StateFlow<JarvisUiState> = _uiState.asStateFlow()
     val pendingToolAction = skillRegistry.pendingToolAction
@@ -78,7 +84,7 @@ class JarvisViewModel @Inject constructor(
                             )
                         )
                     }
-                } else {
+                } else if (!localChatRepository.wasCleared()) {
                     val cloudHistory = conversationRepository.getLastMessages(20)
                     cloudHistory.map {
                         Message(
@@ -87,9 +93,11 @@ class JarvisViewModel @Inject constructor(
                             timestamp = it.timestamp
                         )
                     }
+                } else {
+                    emptyList()
                 }
 
-                if (saved.isEmpty()) {
+                if (saved.isEmpty() && !localChatRepository.wasCleared()) {
                     restored.forEach { message ->
                         localChatRepository.save(
                             role = if (message.isUser) "user" else "assistant",
@@ -144,6 +152,7 @@ class JarvisViewModel @Inject constructor(
     }
 
     fun sendTextMessage() {
+        if (clearingChat) return
         val text = _uiState.value.currentInputText
         if (text.isNotBlank()) {
             if (voiceManager.isSpeaking.value) {
@@ -155,10 +164,11 @@ class JarvisViewModel @Inject constructor(
     }
 
     private fun processCommand(command: String) {
+        if (clearingChat) return
         _uiState.value = JarvisMessageReducer.started(_uiState.value, command)
         val userMessage = _uiState.value.messages.last()
 
-        viewModelScope.launch {
+        val requestJob = viewModelScope.launch {
             try {
                 historyReady.await()
                 saveLocalMessage(userMessage)
@@ -214,6 +224,56 @@ class JarvisViewModel @Inject constructor(
                 saveLocalMessage(_uiState.value.messages.last())
             }
         }
+
+        activeRequestJobs.add(requestJob)
+        requestJob.invokeOnCompletion {
+            activeRequestJobs.remove(requestJob)
+        }
+    }
+
+    fun clearChat() {
+        if (clearingChat) return
+
+        clearingChat = true
+        _uiState.value = _uiState.value.copy(
+            isClearingChat = true,
+            clearChatError = null
+        )
+
+        viewModelScope.launch {
+            try {
+                historyReady.await()
+
+                // Cancel all active chat requests, not just the last one.
+                activeRequestJobs.toList().forEach { job ->
+                    job.cancelAndJoin()
+                }
+                activeRequestJobs.clear()
+
+                voiceManager.stopSpeaking()
+                skillRegistry.rejectPendingToolAction()
+
+                localChatRepository.clear()
+                assistantController.resetNavigationContext()
+
+                _uiState.value = JarvisUiState()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("JarvisChatHistory", "Unable to clear chat", e)
+
+                _uiState.value = _uiState.value.copy(
+                    isProcessing = false,
+                    processingStatus = null,
+                    clearChatError = "Could not clear saved chat. Please retry."
+                )
+            } finally {
+                clearingChat = false
+                _uiState.value = _uiState.value.copy(
+                    isClearingChat = false
+                )
+            }
+        }
     }
 
     private suspend fun saveLocalMessage(message: Message) {
@@ -267,5 +327,7 @@ data class JarvisUiState(
     val messages: List<Message> = emptyList(),
     val currentInputText: String = "",
     val isProcessing: Boolean = false,
-    val processingStatus: String? = null
+    val processingStatus: String? = null,
+    val isClearingChat: Boolean = false,
+    val clearChatError: String? = null
 )

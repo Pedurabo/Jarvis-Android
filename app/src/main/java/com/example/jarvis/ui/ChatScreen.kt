@@ -62,6 +62,7 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
 
     var showFeedbackDialog by remember { mutableStateOf<Message?>(null) }
+    var showClearChatDialog by remember { mutableStateOf(false) }
 
     // Follow new messages only when the reader is near the bottom.
     // Opening the keyboard must not interrupt older-message reading.
@@ -87,6 +88,41 @@ fun ChatScreen(
         } else {
             previousMessageCount = currentCount
         }
+    }
+
+    if (showClearChatDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearChatDialog = false },
+            title = { Text("Clear chat?") },
+            text = {
+                Text(
+                    "Delete the current conversation from this device? " +
+                        "This cannot be undone. Historical cloud copies " +
+                        "are not deleted."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearChatDialog = false
+                        showFeedbackDialog = null
+                        viewModel.clearChat()
+                    }
+                ) {
+                    Text(
+                        "Clear chat",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showClearChatDialog = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showFeedbackDialog != null) {
@@ -157,7 +193,21 @@ fun ChatScreen(
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
-            ChatHeader(modelSelector = modelSelector)
+            ChatHeader(
+                modelSelector = modelSelector,
+                onClearChat = { showClearChatDialog = true },
+                canClearChat = uiState.messages.isNotEmpty() &&
+                    !uiState.isClearingChat
+            )
+
+            if (uiState.clearChatError != null) {
+                Text(
+                    text = uiState.clearChatError!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
 
             Box(
                 modifier = Modifier
@@ -414,7 +464,11 @@ fun ModelLoadingBar() {
 }
 
 @Composable
-fun ChatHeader(modelSelector: @Composable () -> Unit = {}) {
+fun ChatHeader(
+    modelSelector: @Composable () -> Unit = {},
+    onClearChat: () -> Unit = {},
+    canClearChat: Boolean = false
+) {
     // Unified identity and model controls in one header surface.
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -445,7 +499,7 @@ fun ChatHeader(modelSelector: @Composable () -> Unit = {}) {
                 }
             }
 
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Jarvis",
                     style = MaterialTheme.typography.titleMedium,
@@ -457,6 +511,13 @@ fun ChatHeader(modelSelector: @Composable () -> Unit = {}) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            TextButton(
+                onClick = onClearChat,
+                enabled = canClearChat
+            ) {
+                Text("Clear chat")
             }
         }
 

@@ -49,6 +49,12 @@ class AssistantController @Inject constructor(
     @Volatile
     private var pendingDestinationChoices: List<Pair<String, String>>? = null
 
+    // CDI.5.54-A: A cleared conversation must not retain old journeys.
+    fun resetNavigationContext() {
+        pendingNavigationDestination = null
+        pendingDestinationChoices = null
+    }
+
     private val _events = MutableSharedFlow<AssistantEvent>()
     val events: Flow<AssistantEvent> = _events.asSharedFlow()
 
