@@ -1,107 +1,121 @@
 # Jarvis Android
 
-**Your Kampala Life Assistant · Kotlin / Jetpack Compose · Active development**
+**An AI-powered Kampala Life & Uganda Visitor Assistant · Kotlin / Jetpack Compose · Active R&D**
 
-Jarvis is an experimental Android assistant being built for residents of Kampala, Uganda, and people visiting the city. It combines local conversational AI with a source-aware Kampala Places directory and user-controlled Android actions.
+Jarvis is a native Android assistant designed to make everyday life and travel across Kampala and Uganda easier. It brings natural-language conversation together with source-aware place discovery, contextual navigation, and user-controlled actions. The long-term audience includes residents, tourists, expatriates, international students, business travellers, and newcomers.
 
-**Status as of 24 October 2026:** Active prototype, **not production-ready**. The current navigation and chat flows have been tested on a physical Samsung Galaxy S20. The latest application checkpoint is [`fbc7245`](https://github.com/Pedurabo/Jarvis-Android/commit/fbc7245a78b6fa8ce8c6f47ec691eeb0640034fe) (*Connect verified Kampala directory destinations to navigation*).
+> **Status — 26 October 2026:** Active experimental prototype, **not production-ready**. The GitHub repository and the separately developed/tested local Android workspace may be at different checkpoints. Features in the roadmap below are **planned**, not delivered.
 
-## What works today
+## Product vision
 
-### Kampala places and evidence
+**One assistant. One conversation. Practical help across Uganda.**
 
-- Search the Kampala Places directory by supported keyword, area, category, and named destination.
-- Show directory-backed place details, addresses, source URLs, and source-check dates when supplied by the service.
-- Handle unrecognized searches and missing directory records without inventing addresses.
-- Validate directory response structure, required listing fields, HTTPS source URLs, and nonfuture verification dates before displaying directory entries.
-- Distinguish sourced directory responses and notices from local AI-generated answers. Provenance labels indicate an evidence category, **not independently verified accuracy**.
-- Retrieve supported source-grounded Kampala Knowledge content, including Kampala history.
+A user should be able to ask Jarvis to find an apartment in Muyenga, locate an official telecom service centre nearby, identify a hospital or immigration office, compare published service information, and review a route in Google Maps—without manually stitching together unrelated apps. Future booking and payment actions will require explicit user consent and confirmation from the provider.
 
-Directory coverage is limited. A structurally valid directory listing is not a guarantee that a business is open, that its address remains current, or that a source is independently authoritative.
+Two connected experiences will share a single discovery foundation:
 
-### Navigation: tested end to end
+- **Kampala Life Assistant:** Local services, businesses, institutions, landmarks, daily shopping and resident needs.
+- **Uganda Visitor & International Communities Assistant:** Arrival, immigration guidance, accommodation, tourism, transport, language-aware discovery and newcomer assistance.
 
-Jarvis supports a user-controlled journey from a recognised Kampala area or **one exact matching directory destination**:
+## What the current prototype supports
 
-1. Ask *“How do I get to Muyenga?”* or *“Take me to Acacia Mall.”*
-2. For a directory destination, Jarvis searches the Places service and requires a unique exact-name match before using its listed address.
-3. Jarvis asks where the trip begins; a reply such as *“From Ntinda”* completes the two-turn request.
-4. A native **Your journey** card displays the origin and destination, including when a previously saved directions message is restored.
-5. **Open directions** opens Google Maps only after the user taps it. Google Maps resolves the locations and calculates the actual route.
+### Android, AI and conversation
 
-Successful Samsung Galaxy S20 checks covered Ntinda → Muyenga, Nakasero → Kololo, Ntinda → Acacia Mall, the Maps handoff, no automatic launch, restored journey cards, normal source links, and unknown-destination safety.
+- Kotlin / Jetpack Compose chat interface with a compact header, model-selection UI, persistent composer, message presentation, source links and scroll controls.
+- Device-local conversation storage via Room in the current application.
+- Experimental local Llama and Gemma inference paths, including a separately installed Gemma Companion service.
+- Context-sensitive destination follow-ups and conservative handling of unknown or ambiguous places.
+- Approval-protected Android actions; no automatic navigation launch.
 
-**Navigation boundaries:** Jarvis does not calculate or verify turn-by-turn directions, road conditions, distances, or travel times. Its current neighbourhood recognition is limited, destination search uses conservative exact matching, and multiple matching directory records are not yet interactively disambiguated. Navigation conversation context is temporary in-process state and is not guaranteed to survive an app process restart.
+### Source-aware Kampala information
 
-### Android and local AI
+- A limited Kampala Places preview service supporting selected name, area and category searches.
+- Source-aware directory results, published-address notices, response provenance labels and safe fallback when records are missing.
+- Selected published-destination handling, including Watoto Church Downtown, without assuming a map result verifies the underlying address.
+- Supported source-grounded Kampala knowledge queries.
 
-- Jetpack Compose conversational interface with unified header, model dropdown, persistent composer, improved message spacing, source presentation, scrolling, and a **Latest** jump control.
-- Device-local conversation persistence and restoration using Room in the current app.
-- Local Llama 3.2 1B and Gemma 4 E2B paths, including a separately installed Gemma Companion service for Gemma inference.
-- Samsung-tested model switching and core chat functionality during the navigation regression checks.
-- Earlier experimental work includes Gemma Binder/AIDL diagnostics, retry handling, chat clearing, source links, and Maps search actions; those older milestone notes do not all describe the current primary app architecture.
+**Limit:** The current directory is small. A returned listing is not proof of current opening hours, comprehensive coverage, live stock or authoritative address verification.
 
-Models and private weights are not distributed with this repository. General model responses may be incomplete or incorrect; on-device inference and companion-service reliability are still under development.
+### Navigation and Maps handoff
 
-## Verification and checkpoints
+- Selected named-place and neighbourhood journeys, including a user-supplied origin and destination clarification.
+- A user-controlled Google Maps handoff. Google Maps—not Jarvis—resolves roads, directions, distances and travel times.
+- An existing native journey-card path for supported directions.
+- **Recent local checkpoint CDI.6.0-A6.8-B2:** A compact **Review route in Google Maps** action for a source-backed journey; targeted tests, full JVM tests and debug APK build passed, and the button was observed on a Samsung Galaxy S20. **The tap-to-external-Maps result for this newer path remains unverified.** Earlier direction-card handoffs have been device-tested.
 
-These are development acceptance tests, **not a complete automated end-to-end test suite**.
+These recent CDI.6.0 changes were validated in the local development workspace. **Do not assume every local checkpoint is present in the default GitHub branch until it is separately pushed.**
 
-| Checkpoint | Change | Reported verification |
-| --- | --- | --- |
-| [`16b9bf8`](https://github.com/Pedurabo/Jarvis-Android/commit/16b9bf8) | Directory input safeguards and initial directions guard | Android build and Samsung |
-| [`17f9f42`](https://github.com/Pedurabo/Jarvis-Android/commit/17f9f42) | Preserve destination across a starting-point follow-up | Unit tests, build, 4/4 Samsung checks |
-| [`784240c`](https://github.com/Pedurabo/Jarvis-Android/commit/784240c) | User-controlled Google Maps directions URL | 6/6 Samsung checks |
-| [`31664ec`](https://github.com/Pedurabo/Jarvis-Android/commit/31664ec) | Native journey card in Compose | Unit tests, build, 6/6 Samsung checks |
-| [`fbc7245`](https://github.com/Pedurabo/Jarvis-Android/commit/fbc7245) | Directory-backed named destination navigation | Unit tests, build, 6/6 Samsung checks |
+## Planned Kampala & Uganda discovery coverage
 
-The latest reported directory-navigation acceptance test covered Acacia Mall discovery, the journey card, Google Maps opening after a tap, Muyenga navigation, unrecognized-destination handling, and ordinary directory/chat/model regressions. The committed source reflects these changes; a fresh clean-checkout build has **not** been independently verified.
+The target is **broad, map-provider-backed discovery** across Kampala's five divisions, Greater Kampala, neighbouring subcounties and relevant places throughout Uganda. It is not an exhaustive hardcoded catalogue; no map provider guarantees every business or landmark is present or current.
 
-## Technology
+| Domain | Target search coverage |
+| --- | --- |
+| Landmarks & civic | Named buildings, roads/junctions, monuments, museums, Parliament, KCCA, ministries, government offices, courts and police stations |
+| Education & health | Schools, universities, training centres, hospitals, clinics, pharmacies and emergency services |
+| Government & travel documents | Driving permit/licensing, passport and immigration offices, public-service branches |
+| International & diplomatic | Embassies, high commissions, consulates, airline offices and airport services |
+| Telecommunications | Licensed mobile operators, MTN/Airtel and other official service branches, SIM/eSIM, broadband/fibre and internet providers |
+| Finance & practical services | Banks, ATMs, foreign exchange, fuel stations, parking, repairs, laundry, cleaning, catering and business services |
+| Accommodation | Hotels, guesthouses, serviced/furnished apartments, publicly listed apartment buildings, hostels, BnBs and short-stay rentals |
+| Retail, food & recreation | Markets, commodity prices, malls, supermarkets, restaurants, groceries, food delivery, golf, sports and events |
+| Tourism & transport | Airport transfers, ride services, vehicle hire, accredited guides, safari operators, parks and visitor attractions |
+| Faith & community | Places of worship, NGOs, nonprofits, public cultural associations and community resources |
 
-Kotlin · Android SDK · Jetpack Compose · Room · Hilt · Kotlin coroutines · Gradle · Retrofit / OkHttp · local on-device inference · Gemma Companion IPC · JVM unit tests.
+Search should support categories, place aliases, locations, nearby requests (with permission), source links, provider freshness, and safe clarification where multiple branches match. Future integrations may include shopping through services such as Jumia/Ubuy and user-approved ride, food or accommodation handoffs, subject to actual provider support.
 
-## Kampala Places preview service
+### International-community and language-aware discovery (planned)
 
-[Jarvis Kampala Preview API](https://jarvis-kampala-preview.onrender.com)
+Visitors should be able to **opt in** to finding public services that advertise languages, cuisines or cultural familiarity relevant to Indian, Somali, Ethiopian, Eritrean, Sudanese, South Sudanese, Nigerian, Turkish, English-speaking and other communities: restaurants, groceries, accommodation, interpreters, community organisations, events and legitimate professional services.
 
-The experimental service provides endpoints such as `GET /health` and `GET /places`, supporting keyword, category, and area filters. Availability, supported data, and freshness depend on the running service; free-tier hosting may cold-start. This is not a guaranteed live inventory or booking service.
+Listings will use **verifiable self-described services**, not inferred ethnicity, nationality, neighbourhood demographics or presumed ownership. Jarvis will not map private residences, identify individuals, or describe accommodation as exclusive to a community without reliable explicit evidence.
 
-## Developer workflow
+## Evidence, privacy and safety principles
 
-Use a compatible JDK, Android SDK, Gradle wrapper, and private local model/companion configuration.
+1. **Place data ≠ verification.** Distinguish provider-listed, officially confirmed, user-supplied and unverified records; show sources and freshness where available.
+2. **GPS ≠ a business database.** Device location requires permission; discovery additionally requires map/places providers and suitable institutional sources.
+3. **No fabricated live status.** Do not invent availability, prices, ETAs, opening hours, emergency contact details, bookings or current travel regulations.
+4. **User-controlled actions.** External maps, reservations, purchases and payments should be intentional, and transactional completion requires provider confirmation.
+5. **Privacy by design.** Protect private residential addresses, sensitive personal data and community identities; prefer public business and authorised visitor information.
+
+## Architecture and technology
+
+**Current stack:** Kotlin · Android SDK · Jetpack Compose · Room · Hilt · Coroutines · Gradle · Retrofit/OkHttp · local AI inference · Gemma Companion IPC · JVM unit tests.
+
+**Next architectural milestone — CDI.6.0-A6.9:** Consolidate the existing directory, published-place policies and navigation context into a reusable **place/service resolver** with a structured place model, multiple sources, location/coverage metadata, ambiguity handling, provenance, and optional map handoff. Map/provider integrations and new data coverage will follow incrementally; they are **not yet a comprehensive live directory**.
+
+## Development workflow
+
+Use a compatible JDK, Android SDK, Gradle wrapper, and locally configured inference services or model weights.
 
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest
 .\gradlew.bat :app:assembleDebug
 ```
 
-Run physical-device verification **after** the build. For manual testing, install the debug APK without clearing app data and launch the app normally; connected Android instrumentation tests may reinstall or replace the app. Do not assume an APK was installed just because `assembleDebug` succeeded.
+Manual physical-device verification follows successful automated tests. Install a debug APK with `adb install -r` or `installDebug`, then launch the app; keep instrumentation test runs separate from manual Samsung verification. A successful build does not imply the APK was installed or the entire workflow works on device.
 
-Do not commit `local.properties`, `.env`, `google-services.json`, signing credentials, device logs, proprietary model weights, backups, build outputs, or private user data.
+Never commit local SDK paths, credentials, `.env`, `google-services.json`, model weights, user data, device logs, build artifacts, or backups.
 
-## Known limitations
+### Kampala Places preview
 
-- Limited Kampala directory coverage and exact-match named-place navigation. Multiple branches with the same name need safe disambiguation.
-- Source URLs and checked dates are useful provenance, not proof of real-time correctness or independently audited listings.
-- Routes, distances, traffic, and ETAs come from the mapping provider, not Jarvis.
-- Model-generated factual or technical answers are not comprehensively fact-checked.
-- Local AI setup and the companion app require device-specific configuration.
-- Not all UI, failure/retry, process-restart, offline, or service-unavailable scenarios have complete automated regression coverage.
-- No general-purpose ride booking, food ordering, payments, hotel reservations, live market pricing, or guaranteed real-time availability.
+[Jarvis Kampala Preview API](https://jarvis-kampala-preview.onrender.com) — experimental service; endpoints such as `GET /health` and `GET /places` may provide selected listings. Hosted availability and data freshness are not guaranteed.
 
-## Next development priorities
+## Milestones and limitations
 
-1. **CDI.5.53-B:** Handle multiple matching named destinations safely, using real directory records and explicit branch selection.
-2. Add focused automated tests for navigation state transitions and directory-result ambiguity.
-3. Restore pending navigation context safely across app restarts where appropriate.
-4. Expand genuinely sourced Kampala places and services, with clearer freshness and coverage signals.
-5. Continue improving the primary Compose experience and local model reliability.
+The existing GitHub history records earlier directory/navigation checkpoints, including [`fbc7245`](https://github.com/Pedurabo/Jarvis-Android/commit/fbc7245a78b6fa8ce8c6f47ec691eeb0640034fe) (directory-backed destination navigation). More recent **local** CDI.6.0-A6.7/A6.8 work strengthened origin correction, source-backed destination follow-ups and compact Maps presentation, with automated and selected Samsung UI verification.
 
-## Long-term direction
+**Known gaps:** Broad provider-backed GPS search is not implemented; coverage is limited; multi-branch resolution, persistent journey state, provider freshness, hotel/ride booking, real-time shopping and pricing, tourism reservations and community directories remain development goals. The newest source-backed Maps action still needs its external-launch device acceptance check. A clean-checkout build of the current GitHub branch has not been independently established here.
 
-Jarvis aims to help people discover and navigate Kampala's markets, shopping, food, hotels and short stays, transport options, tourist attractions, government offices, embassies, NGOs, faith communities, apartments, and vetted home services. Integrations with shopping, rides, ordering, reservations, and payments are **product goals**, not claims of currently available functionality. Any future external booking or payment action should require explicit user consent.
+## Roadmap
+
+1. Verify the latest compact Maps button launches the expected external journey on a physical device.
+2. **A6.9:** Audit and integrate existing place-repository interfaces into one reusable evidence-aware resolver.
+3. Add credible GPS/map-provider and official-source discovery, coverage/freshness indicators and branch disambiguation.
+4. Extend institutions, accommodation, telecom, tourism, everyday-life and opt-in language/community services.
+5. Build integrated multi-step assistance, provider-approved actions and a polished reliable Android experience.
+6. Expand offline, privacy, performance, accessibility and end-to-end regression testing.
 
 ---
 
-**Active research and development. Not a released or production-ready city assistant.**
+**Active research and development. Not yet a released, fully verified or production-ready Uganda city assistant.**
