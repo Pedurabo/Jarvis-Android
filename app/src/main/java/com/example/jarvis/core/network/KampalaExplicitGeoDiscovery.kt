@@ -501,6 +501,7 @@ fun createOverpass(): KampalaExplicitGeoDiscovery =
             "university", "universities",
             "guesthouse", "guesthouses",
             "guest house", "guest houses",
+            "private homes",
             "embassy", "embassies",
             "police", "police station", "police stations",
             "fuel station", "fuel stations"
@@ -1457,8 +1458,6 @@ suspend fun answerOrNull(message: String): String? {
             .trimEnd('?', '.', '!')
             .trim()
 
-        metropolitanChatAnswerOrNull(message)?.let { return it }
-
         // Match only an explicit short place-discovery follow-up.
         // A new journey or unrelated message must remain untouched.
         val followUp = Regex(
@@ -1502,8 +1501,6 @@ suspend fun answerOrNull(message: String): String? {
             lastMultiAreaSearch = true
             return multiAreaResult
         }
-
-        namedPlaceAnswerOrNull(message)?.let { return it }
 
         val command = parseOrNull(message)
 
@@ -1604,6 +1601,12 @@ suspend fun answerOrNull(message: String): String? {
                         "area or provide a specific public place name."
                 }
             }
+
+            // Metropolitan and named-place discovery are fallback routes.
+            // They must not pre-empt the approved-area parser or the
+            // unsupported-area fail-closed guard above.
+            metropolitanChatAnswerOrNull(message)?.let { return it }
+            namedPlaceAnswerOrNull(message)?.let { return it }
 
             // Ordinary chat continues through existing routing.
             return null
