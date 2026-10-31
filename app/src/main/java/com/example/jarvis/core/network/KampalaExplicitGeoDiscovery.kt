@@ -841,6 +841,37 @@ fun createOverpass(): KampalaExplicitGeoDiscovery =
                 ignoreCase = true
             )
 
+        // JARVIS-AREA-SCOPED-NAMED-DESTINATION-GUARD-V1
+        // Area-scoped searches must identify a plausible destination.
+        // National searches retain the existing unrestricted name lookup.
+        if (!nationalScope) {
+            val normalizedName = originalName.lowercase()
+            val destinationDescriptors = listOf(
+                "fuel station", "petrol station", "guest house",
+                "guesthouse", "police station", "taxi park",
+                "shopping mall", "department store", "sports centre",
+                "sports center", "fitness centre", "fitness center",
+                "hotel", "hospital", "clinic", "school", "academy",
+                "university", "college", "bank", "pharmacy", "embassy",
+                "church", "mosque", "cathedral", "restaurant", "cafe",
+                "café", "supermarket", "market", "museum", "stadium",
+                "tower", "plaza", "centre", "center", "mall", "park",
+                "lodge", "hostel", "motel", "bar", "pub", "nightclub",
+                "attraction"
+            )
+
+            val hasDestinationEvidence =
+                suffix != null ||
+                    KampalaNamedDestinationRoute.resolve(
+                        "Find $originalName"
+                    ) != null ||
+                    destinationDescriptors.any { descriptor ->
+                        normalizedName.startsWith("$descriptor ") ||
+                            normalizedName.endsWith(" $descriptor")
+                    }
+
+            if (!hasDestinationEvidence) return null
+        }
         val area = if (nationalScope) {
             null
         } else {

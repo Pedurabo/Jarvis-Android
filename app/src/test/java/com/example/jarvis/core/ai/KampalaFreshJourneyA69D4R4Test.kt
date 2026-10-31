@@ -125,7 +125,8 @@ class KampalaFreshJourneyA69D4R4Test {
 
         val fresh =
             source.indexOf(
-                "KampalaFreshJourneyPriority.resolveOrNull(query)"
+                "KampalaFreshJourneyPriority.resolveOrNull(query)",
+                geographic
             )
 
         val contextual =

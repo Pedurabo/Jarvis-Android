@@ -2690,6 +2690,11 @@ class AssistantController @Inject internal constructor(
         finalAnswerText = JarvisP2B7COutputPolicy.review(
             query, finalAnswerText
         )
+        if (toolUsageCount == 0) {
+            finalAnswerText = KampalaTrustedFactPolicy.review(
+                query, finalAnswerText
+            )
+        }
         val finalVoiceText = try {
             val candidate = responsePipeline.execute(
                 query, finalAnswerText, retrievedContext, currentRoute
@@ -2724,7 +2729,7 @@ class AssistantController @Inject internal constructor(
         val finalResponse = AssistantResponse(
             text = visibleAnswerText,
             voiceOptimizedText = finalVoiceText,
-            confidence = EvidenceConfidencePolicy.level(finalOrigin),
+            confidence = EvidenceConfidencePolicy.finalResponseLevel(finalOrigin, confidence.level),
             origin = finalOrigin,
             metadata = ResponseMetadata(
                 route = currentRoute,

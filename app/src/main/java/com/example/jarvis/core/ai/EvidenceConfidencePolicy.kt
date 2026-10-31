@@ -31,4 +31,19 @@ internal object EvidenceConfidencePolicy {
         AssistantController.ResponseOrigin.AI_RESPONSE ->
             ConfidenceLevel.LOW
     }
+
+    /**
+     * Final model responses use the response assessment.
+     * Curated facts retain their provenance-based category.
+     */
+    fun finalResponseLevel(
+        origin: AssistantController.ResponseOrigin,
+        assessedLevel: ConfidenceLevel
+    ): ConfidenceLevel {
+        return if (origin == AssistantController.ResponseOrigin.CURATED_FACT) {
+            level(origin)
+        } else {
+            assessedLevel
+        }
+    }
 }

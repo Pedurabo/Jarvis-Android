@@ -17,7 +17,7 @@ class CuratedFactProvenanceTest {
     }
 
     @Test
-    fun modelAnswerRemainsLow() {
+    fun evidencePolicyKeepsUnverifiedModelOriginLow() {
         assertEquals(
             ConfidenceLevel.LOW,
             EvidenceConfidencePolicy.level(

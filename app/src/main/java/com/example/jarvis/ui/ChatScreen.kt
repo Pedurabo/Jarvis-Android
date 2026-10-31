@@ -716,7 +716,7 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
                             Column {
                                 ConfidenceIndicator(message.confidence)
                                 Text(
-                                    text = "AI-generated · Verify current information",
+                                    text = "AI-generated · Not independently verified",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1798,8 +1798,8 @@ private fun JarvisLinkedAnswer(
 fun ConfidenceIndicator(level: ConfidenceLevel) {
     val (color, icon, label) = when (level) {
         ConfidenceLevel.HIGH -> Triple(Color(0xFF4CAF50), Icons.Default.CheckCircle, "High Confidence")
-        ConfidenceLevel.MEDIUM -> Triple(Color(0xFFFF9800), Icons.Default.Info, "Medium Confidence")
-        ConfidenceLevel.LOW -> Triple(Color(0xFFF44336), Icons.AutoMirrored.Filled.Help, "Low Confidence")
+        ConfidenceLevel.MEDIUM -> Triple(Color(0xFFFF9800), Icons.Default.Info, "Basic Check Passed")
+        ConfidenceLevel.LOW -> Triple(Color(0xFFF44336), Icons.AutoMirrored.Filled.Help, "Needs Review")
     }
 
     Row(

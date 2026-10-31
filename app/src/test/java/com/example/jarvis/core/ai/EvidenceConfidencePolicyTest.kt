@@ -46,11 +46,41 @@ class EvidenceConfidencePolicyTest {
     }
 
     @Test
-    fun ordinaryModelAnswerIsUnverified() {
+    fun evidencePolicyMarksModelOriginUnverified() {
         assertEquals(
             ConfidenceLevel.LOW,
             EvidenceConfidencePolicy.level(
                 AssistantController.ResponseOrigin.AI_RESPONSE
+            )
+        )
+    }
+
+    @Test
+    fun finalModelResponseUsesScoredAssessment() {
+        assertEquals(
+            ConfidenceLevel.MEDIUM,
+            EvidenceConfidencePolicy.finalResponseLevel(
+                AssistantController.ResponseOrigin.AI_RESPONSE,
+                ConfidenceLevel.MEDIUM
+            )
+        )
+
+        assertEquals(
+            ConfidenceLevel.LOW,
+            EvidenceConfidencePolicy.finalResponseLevel(
+                AssistantController.ResponseOrigin.AI_RESPONSE,
+                ConfidenceLevel.LOW
+            )
+        )
+    }
+
+    @Test
+    fun finalCuratedFactRetainsProvenanceCategory() {
+        assertEquals(
+            ConfidenceLevel.MEDIUM,
+            EvidenceConfidencePolicy.finalResponseLevel(
+                AssistantController.ResponseOrigin.CURATED_FACT,
+                ConfidenceLevel.LOW
             )
         )
     }

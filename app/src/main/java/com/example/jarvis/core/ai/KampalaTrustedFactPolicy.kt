@@ -39,6 +39,11 @@ internal object KampalaTrustedFactPolicy {
         )
     )
 
+    private val capitalOfUgandaQuestion = Regex(
+        """^\s*(?:(?:what|which)\s+(?:is|are)\s+(?:the\s+)?capital(?:\s+city)?\s+of\s+uganda|which\s+city\s+is\s+(?:the\s+)?capital(?:\s+city)?\s+of\s+uganda|what\s+is\s+uganda['’]s\s+capital|name\s+the\s+capital(?:\s+city)?\s+of\s+uganda)\s*[?.!]*\s*$""",
+        RegexOption.IGNORE_CASE
+    )
+
     /**
      * Curated answer for an explicitly supported factual request.
      *
@@ -46,7 +51,7 @@ internal object KampalaTrustedFactPolicy {
      * do not guess hills, routes, businesses, or administrative facts.
      */
     fun answer(query: String): String? {
-        return if (locationQuestions.any { it.matches(query) }) {
+        return if (locationQuestions.any { it.matches(query) } || capitalOfUgandaQuestion.matches(query)) {
             kampalaLocation.statement
         } else {
             null
