@@ -88,34 +88,15 @@ fun MainContent(
     var selectorExpanded by remember { mutableStateOf(false) }
 
     ChatScreen(modelSelector = {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = "Active model",
-                    style = MaterialTheme.typography.labelMedium
-                )
-                Text(
-                    text = "Choose your local AI",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
             Box {
-                OutlinedButton(
+                androidx.compose.material3.TextButton(
                     onClick = { selectorExpanded = true }
                 ) {
                     Text(
-                        if (selectedGemma)
-                            "Gemma 4 E2B"
-                        else
-                            "Llama 3.2 1B"
+                        text = if (selectedGemma) "Gemma 4" else "Llama 3.2",
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     Spacer(Modifier.width(6.dp))
                     Icon(
@@ -165,6 +146,5 @@ fun MainContent(
                     )
                 }
             }
-        }
     })
 }

@@ -1,0 +1,4 @@
+requests=25
+successTiles=19
+incompleteTiles=6
+uniquePlaces=76

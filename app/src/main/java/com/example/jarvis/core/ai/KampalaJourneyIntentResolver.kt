@@ -10,9 +10,12 @@ package com.example.jarvis.core.ai
  */
 internal object KampalaJourneyIntentResolver {
 
+    // P3-A1: Stops are ordered, user-supplied names.
+    // They are not geocoded or verified locations.
     data class Journey(
         val origin: String,
-        val destination: String
+        val destination: String,
+        val stops: List<String> = emptyList()
     )
 
     private val whitespace = Regex("""\s+""")
@@ -35,7 +38,7 @@ internal object KampalaJourneyIntentResolver {
 
     private val explicitFromTo = listOf(
         Regex(
-            """^(?:how\s+(?:do|can)\s+i\s+get\s+)?from\s+(.+?)\s+to\s+(.+)$""",
+            """^(?:(?:how\s+(?:do|can)\s+i\s+get\s+)?|take\s+me\s+)from\s+(.+?)\s+to\s+(.+)$""",
             RegexOption.IGNORE_CASE
         ),
         Regex(
@@ -50,7 +53,7 @@ internal object KampalaJourneyIntentResolver {
     )
 
     private val placePattern = Regex(
-        """[A-Za-z][A-Za-z ,'\-]{1,79}"""
+        """[A-Za-z][A-Za-z0-9 ,'\-]{1,79}"""
     )
 
     private fun cleanPlace(value: String): String =
@@ -84,6 +87,11 @@ internal object KampalaJourneyIntentResolver {
     // CDI.5.56-A: Recognize a directions request with no origin.
     // This does not verify the supplied destination.
     private val destinationOnlyPatterns = listOf(
+        // CDI.5.62: Natural requests for directions.
+        Regex(
+            """^(?:(?:can|could)\s+you\s+(?:please\s+)?get\s+me\s+directions\s+to|please\s+help\s+me\s+get\s+to|(?:can|could)\s+you\s+help\s+me\s+get\s+to)\s+(.+)$""",
+            RegexOption.IGNORE_CASE
+        ),
         Regex(
             """^(?:i\s+)?(?:need|want|have)\s+to\s+(?:get|go|reach)(?:\s+to)?\s+(.+)$""",
             RegexOption.IGNORE_CASE
@@ -124,12 +132,57 @@ internal object KampalaJourneyIntentResolver {
         """^(?:i\s+)?(?:need|want|have)\s+to\s+(?:get|go|reach)(?:\s+to)?\s+(.+?)\s+from\s+(.+)$""",
         RegexOption.IGNORE_CASE
     )
+    // P3-A1: Deliberately limited explicit multi-stop syntax.
+    // No coordinates, live route, duration or inferred campus.
+    private val explicitMultiStop = Regex(
+        """^from\s+(.+?)\s+via\s+(.+?)\s+to\s+(.+)$""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private fun resolveExplicitMultiStop(input: String): Journey? {
+        val match = explicitMultiStop.matchEntire(input) ?: return null
+
+        val base = createJourney(
+            match.groupValues[1],
+            match.groupValues[3]
+        ) ?: return null
+
+        val stops = match.groupValues[2]
+            .split(Regex("""\s+via\s+""", RegexOption.IGNORE_CASE))
+            .map(::cleanPlace)
+
+        if (
+            stops.isEmpty() ||
+            stops.any {
+                it.length !in 2..80 || !placePattern.matches(it)
+            }
+        ) {
+            return null
+        }
+
+        val names = listOf(base.origin) + stops + base.destination
+
+        if (names.distinctBy { it.lowercase() }.size != names.size) {
+            return null
+        }
+
+        return base.copy(stops = stops)
+    }
+
     fun resolve(input: String): Journey? {
         val normalized = input.trim()
             .replace(whitespace, " ")
             .trim()
 
         if (normalized.isBlank()) return null
+
+        // Multi-stop requests must never be treated as a
+        // two-point journey by falling through to legacy parsing.
+        if (explicitMultiStop.matches(normalized.trimEnd('.', '?', '!'))) {
+            return resolveExplicitMultiStop(
+                normalized.trimEnd('.', '?', '!')
+            )
+        }
 
         val destinationFirst = destinationFirstJourney.matchEntire(
             normalized.trimEnd('.', '?', '!')
@@ -139,6 +192,21 @@ internal object KampalaJourneyIntentResolver {
             return createJourney(
                 destinationFirst.groupValues[2],
                 destinationFirst.groupValues[1]
+            )
+        }
+
+        // CDI.6.0-A6.9-D4E-R1:
+        // Destination-first directions with an explicit origin.
+        // Example: "How do I get to Acacia Mall from Ntinda?"
+        val directionsFrom = Regex(
+            """^how\s+(?:do|can)\s+i\s+get\s+to\s+(.+?)\s+from\s+(.+)$""",
+            RegexOption.IGNORE_CASE
+        ).matchEntire(normalized.trimEnd('.', '?', '!'))
+
+        if (directionsFrom != null) {
+            return createJourney(
+                directionsFrom.groupValues[2],
+                directionsFrom.groupValues[1]
             )
         }
 

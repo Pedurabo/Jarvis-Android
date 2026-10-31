@@ -1,6 +1,7 @@
 package com.example.jarvis.core.ai
 
 import android.util.Log
+import com.example.jarvis.core.chat.LocalChatRepository
 import com.example.jarvis.core.network.KampalaPlacesQueryRoute
 import com.example.jarvis.core.network.KampalaPlacesRepository
 import com.example.jarvis.core.network.KampalaKnowledgeQueryRoute
@@ -13,6 +14,7 @@ import com.example.jarvis.core.context.ContextManager
 import com.example.jarvis.skills.SkillRegistry
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -21,7 +23,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class AssistantController @Inject constructor(
+class AssistantController @Inject internal constructor(
     private val contextManager: ContextManager,
     private val modelRouter: ModelRouter,
     private val conversationRepository: ConversationRepository,
@@ -34,25 +36,110 @@ class AssistantController @Inject constructor(
     private val responsePipeline: ResponsePipeline,
     private val intentAnalyzer: IntentAnalyzer,
     private val responseCache: ResponseCache,
+    private val kampalaDeviceGeocoder: KampalaDeviceGeocoder,
     private val kampalaPlacesRepository: KampalaPlacesRepository,
-    private val kampalaKnowledgeRepository: KampalaKnowledgeRepository
+    private val kampalaKnowledgeRepository: KampalaKnowledgeRepository,
+    private val localChatRepository: LocalChatRepository,
+    private val conversationInterpretationProbe: ConversationInterpretationProbe
 ) {
     private val TAG = "AssistantController"
     private val MAX_STEPS = 3
     private val promptBuilder = JarvisPromptBuilder()
 
+    // Reuse the configured geographic backend and its
+    // provider reliability/cooldown handling.
+    private val navigationGeoSuggestion by lazy {
+        val origin =
+            com.example.jarvis.core.network
+                .KampalaGeoBackendConfig.HTTPS_ORIGIN
+
+        if (origin.isBlank()) {
+            null
+        } else {
+            KampalaNavigationGeoSuggestion(
+                com.example.jarvis.core.network
+                    .KampalaGeoDiscoveryGateway
+                    .createBackend(origin)
+            )
+        }
+    }
+
+    // CDI.6.0-A6.9-D4C-R1:
+    // One instance preserves the provider's cache and cooldown.
+    // Construction does not contact Overpass.
+    // P3-B1D: Staging provider is constructed lazily.
+    // Only an explicit map-journey command may invoke it.
+    private val p3b1dWaypointSearch by lazy {
+        KampalaP3B1DWaypointSearch.createStaging()
+    }
+    private val explicitGeoDiscovery by lazy {
+        com.example.jarvis.core.network
+            .KampalaExplicitGeoDiscovery.createConfiguredBackend()
+    }
+
+    // CDI.6.0-A6.4-B3R:
+    // Experimental context interpretation is disabled by default.
+    // This state is in-memory only and does not authorize actions.
+    @Volatile
+    private var contextInterpretationEnabled = false
+
+    @Volatile
+    private var activeConversationTask: ConversationTaskState.Task? = null
+
+    internal fun setContextInterpretationEnabledForTesting(enabled: Boolean) {
+        contextInterpretationEnabled = enabled
+
+        if (!enabled) {
+            activeConversationTask = null
+        }
+    }
+
     // Active navigation request only; not persistent journey history.
     @Volatile
     private var pendingNavigationDestination: String? = null
+
+    // CDI.6.0-A6.5-E:
+    // A user-requested place name with no verified directory result.
+    // Never treat this as a verified address or navigation target.
+    @Volatile
+    private var pendingUnverifiedDestination: String? = null
+
+    // CDI.6.0-A6.6-C:
+    // Explicit user-supplied origin for an unverified destination.
+    // Not a GPS reading or verified address.
+    @Volatile
+    private var pendingUnverifiedOrigin: String? = null
+
+    // CDI.6.0-A6.7-A2:
+    // Source-backed destination facts remain separate
+    // from directory navigation and route calculation.
+    @Volatile
+    private var sourceBackedJourney: KampalaDestinationJourney? = null
 
     // CDI.5.53-B1: Temporary, directory-backed branch choices.
     @Volatile
     private var pendingDestinationChoices: List<Pair<String, String>>? = null
 
+    // A single directory listing available for one contextual follow-up.
+    @Volatile
+    private var lastDirectoryDestination: String? = null
+
+    // CDI.5.64-A2: One pending, user-supplied emergency destination.
+    // This is neither an address verification nor journey history.
+    @Volatile
+    private var pendingEmergencyContext:
+        KampalaEmergencyContextPolicy.Context? = null
+
     // CDI.5.54-A: A cleared conversation must not retain old journeys.
     fun resetNavigationContext() {
         pendingNavigationDestination = null
+        pendingUnverifiedDestination = null
+        pendingUnverifiedOrigin = null
+        sourceBackedJourney = null
         pendingDestinationChoices = null
+        lastDirectoryDestination = null
+        pendingEmergencyContext = null
+        activeConversationTask = null
     }
 
     private val _events = MutableSharedFlow<AssistantEvent>()
@@ -89,6 +176,1182 @@ class AssistantController @Inject constructor(
 
     suspend fun onUserQuery(query: String, onUpdate: (String) -> Unit): AssistantResponse = coroutineScope {
         val startTime = System.currentTimeMillis()
+
+        // Capture existing pending navigation context without
+        // changing the navigation subsystem or verifying an address.
+        val pendingForContext = pendingNavigationDestination
+
+        if (contextInterpretationEnabled &&
+            activeConversationTask == null &&
+            !pendingForContext.isNullOrBlank()
+        ) {
+            activeConversationTask = ConversationTaskState.Task(
+                kind = ConversationTaskState.Kind.NAVIGATION,
+                goal = "Continue pending navigation",
+                fields = mapOf(
+                    ConversationTaskState.Field.DESTINATION to
+                        ConversationTaskState.Fact(
+                            value = pendingForContext,
+                            provenance =
+                                ConversationTaskState.Provenance.USER_SUPPLIED
+                        )
+                )
+            )
+        }
+
+        // CDI.5.64-A2: Handle one contextual emergency follow-up
+        // before ordinary navigation or model generation.
+        val emergencyContext = pendingEmergencyContext
+
+        if (emergencyContext != null &&
+            KampalaEmergencyResponsePolicy.respondOrNull(query) == null
+        ) {
+            // Do not retain emergency location context across
+            // unrelated requests or repeated speculative replies.
+            pendingEmergencyContext = null
+
+            val contextualNotice =
+                KampalaEmergencyContextPolicy.followUpResponse(
+                    emergencyContext, query
+                )
+
+            if (contextualNotice != null) {
+                onUpdate("Checking emergency conversation context...")
+
+                val contextualResponse = AssistantResponse(
+                    text = contextualNotice,
+                    voiceOptimizedText = contextualNotice,
+                    confidence = EvidenceConfidencePolicy.level(
+                        ResponseOrigin.DIRECTORY_NOTICE
+                    ),
+                    origin = ResponseOrigin.DIRECTORY_NOTICE,
+                    metadata = ResponseMetadata(
+                        route = ModelRouter.Route.LOCAL,
+                        processingTimeMs =
+                            System.currentTimeMillis() - startTime,
+                        toolUsage = 0,
+                        memoryUsage = 0
+                    )
+                )
+
+                conversationRepository.saveMessage("user", query)
+                conversationRepository.saveMessage(
+                    "assistant", contextualNotice
+                )
+
+                return@coroutineScope contextualResponse
+            }
+        }
+
+        // CDI.5.63-A3R: Handle acute dog-bite emergencies before
+        // contextual navigation, directory routing, or model generation.
+        val emergencyNotice =
+            KampalaEmergencyResponsePolicy.respondOrNull(query)
+
+        if (emergencyNotice != null) {
+            // Prevent an earlier destination or route from being reused.
+            resetNavigationContext()
+
+            // Retain only explicitly supplied clinic details.
+            pendingEmergencyContext =
+                KampalaEmergencyContextPolicy.capture(query)
+
+            onUpdate("Preparing emergency safety guidance...")
+
+            val response = AssistantResponse(
+                text = emergencyNotice,
+                voiceOptimizedText = emergencyNotice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage(
+                "assistant", emergencyNotice
+            )
+
+            return@coroutineScope response
+        }
+
+        // CDI.6.0-A6.9-D4C-R1:
+        // Only recognized explicit map-search commands may
+        // invoke the external geographic discovery provider.
+        // Emergency handling above retains priority.
+        // Preserve the original conversational wording for the
+        // stability normalizer before legacy normalization can
+        // absorb a trailing question into the requested area.
+        // P3-B2B: Snakebite emergency protection.
+        // Existing dog-bite handling remains above this block.
+        // This executes before geographic discovery, navigation
+        // and unrestricted local-model generation.
+        val snakebiteNotice =
+            KampalaP3B2BSnakebiteEmergency.noticeOrNull(query)
+
+        if (snakebiteNotice != null) {
+            // Never carry an earlier itinerary into an emergency.
+            resetNavigationContext()
+
+            onUpdate("Preparing urgent medical safety guidance...")
+
+            val emergencyResponse = AssistantResponse(
+                text = snakebiteNotice,
+                voiceOptimizedText = snakebiteNotice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage(
+                "assistant",
+                snakebiteNotice
+            )
+
+            return@coroutineScope emergencyResponse
+        }
+        // JARVIS-LANDMARK-CLARIFICATION-V1
+        // A relative landmark is a clue, never a replacement
+        // for the destination or an independently verified fact.
+        // Emergency handlers above retain absolute priority.
+        val landmarkFollowUp = Regex(
+            """^(?:it's|it is|the place is|the destination is|it's located|it is located)\s+(opposite|near|next to|beside|behind|adjacent to|across from)\s+(?:the\s+)?([A-Za-z][A-Za-z0-9 '\-]{1,79})\s*[.!?]*$""",
+            RegexOption.IGNORE_CASE
+        ).matchEntire(query.trim())
+
+        if (landmarkFollowUp != null) {
+            val currentDestination = pendingUnverifiedDestination
+            val currentOrigin = pendingUnverifiedOrigin
+
+            if (
+                !currentDestination.isNullOrBlank() &&
+                !currentOrigin.isNullOrBlank() &&
+                pendingDestinationChoices == null
+            ) {
+                val relation =
+                    landmarkFollowUp.groupValues[1].lowercase()
+                val landmark =
+                    landmarkFollowUp.groupValues[2].trim()
+
+                // Do not change pendingUnverifiedDestination,
+                // pendingUnverifiedOrigin or sourceBackedJourney.
+                val notice =
+                    "Understood. You're describing " +
+                        "$currentDestination as $relation " +
+                        "$landmark.\n\n" +
+                        "Your journey remains:\n" +
+                        "From: $currentOrigin\n" +
+                        "To: $currentDestination\n\n" +
+                        "I haven't independently verified " +
+                        "this landmark relationship. " +
+                        "Google Maps should be used to " +
+                        "confirm the intended destination."
+
+                val response = AssistantResponse(
+                    text = notice,
+                    voiceOptimizedText = notice,
+                    confidence = EvidenceConfidencePolicy.level(
+                        ResponseOrigin.DIRECTORY_NOTICE
+                    ),
+                    origin = ResponseOrigin.DIRECTORY_NOTICE,
+                    metadata = ResponseMetadata(
+                        route = ModelRouter.Route.LOCAL,
+                        processingTimeMs =
+                            System.currentTimeMillis() - startTime,
+                        toolUsage = 0,
+                        memoryUsage = 0
+                    )
+                )
+
+                conversationRepository.saveMessage(
+                    "user", query
+                )
+                conversationRepository.saveMessage(
+                    "assistant", notice
+                )
+
+                return@coroutineScope response
+            }
+        }
+        // A complete new journey takes precedence over origin-only context.
+        val isFreshCompleteJourney =
+            KampalaFreshJourneyPriority.resolveOrNull(query) != null
+
+        // P3-JOURNEY-CONTINUITY:
+        // After emergency protections and before geographic routing,
+        // accept origin/detail follow-ups for the active journey.
+        // JARVIS-NAV-CONTINUITY-V2
+        // Retained locations are user supplied, not verified GPS.
+        // Never override a newly supplied complete journey.
+        val followUpDestination = pendingUnverifiedDestination
+        val followUpOrigin = pendingUnverifiedOrigin
+
+        if (
+            !isFreshCompleteJourney &&
+            pendingDestinationChoices == null &&
+            !followUpDestination.isNullOrBlank() &&
+            !followUpOrigin.isNullOrBlank()
+        ) {
+            val message = query.trim()
+                .trimEnd('.', '?', '!')
+                .trim()
+
+            val changeOrigin = Regex(
+                """^(?:actually[, ]*)?(?:i'm|i am|am)\s+(?:currently\s+)?(?:starting\s+)?(?:from|in|at)\s+([A-Za-z][A-Za-z0-9 '\-]{1,79})$""",
+                RegexOption.IGNORE_CASE
+            ).matchEntire(message)
+
+            val destinationClue = Regex(
+                """^(?:it's|it is|the place is|the destination is)\s+(opposite|near|next to|beside|behind|adjacent to)\s+([A-Za-z][A-Za-z0-9 '\-]{1,79})$""",
+                RegexOption.IGNORE_CASE
+            ).matchEntire(message)
+
+            val openRoute = Regex(
+                """^(?:take me there|show me directions|open directions|open maps|navigate there)$""",
+                RegexOption.IGNORE_CASE
+            ).matches(message)
+
+            val continuityNotice: String? = when {
+                changeOrigin != null -> {
+                    val newOrigin =
+                        changeOrigin.groupValues[1].trim()
+
+                    pendingUnverifiedOrigin = newOrigin
+
+                    sourceBackedJourney =
+                        sourceBackedJourney?.withUserOrigin(
+                            newOrigin
+                        )
+
+                    "Starting point updated to $newOrigin. " +
+                        "Your destination remains " +
+                        "$followUpDestination. " +
+                        "Say 'Take me there' to open directions."
+                }
+
+                destinationClue != null -> {
+                    val relationship =
+                        destinationClue.groupValues[1].lowercase()
+                    val landmark =
+                        destinationClue.groupValues[2].trim()
+
+                    "You are describing $followUpDestination " +
+                        "as $relationship $landmark. " +
+                        "I'll keep the journey from " +
+                        "$followUpOrigin to $followUpDestination. " +
+                        "This location clue is not verified. " +
+                        "Confirm the intended place in Google Maps."
+                }
+
+                openRoute -> {
+                    val encodedOrigin =
+                        java.net.URLEncoder.encode(
+                            "$followUpOrigin, Kampala, Uganda",
+                            "UTF-8"
+                        )
+
+                    val encodedDestination =
+                        java.net.URLEncoder.encode(
+                            "$followUpDestination, Kampala, Uganda",
+                            "UTF-8"
+                        )
+
+                    val mapsUrl =
+                        "https://www.google.com/maps/dir/?api=1" +
+                            "&origin=$encodedOrigin" +
+                            "&destination=$encodedDestination"
+
+                    "Your journey\n\n" +
+                        "From: $followUpOrigin\n" +
+                        "To: $followUpDestination\n\n" +
+                        "Check both locations and the route " +
+                        "in Google Maps.\n\n" +
+                        "Open directions: $mapsUrl"
+                }
+
+                else -> null
+            }
+
+            if (continuityNotice != null) {
+                val response = AssistantResponse(
+                    text = continuityNotice,
+                    voiceOptimizedText = continuityNotice,
+                    confidence = EvidenceConfidencePolicy.level(
+                        ResponseOrigin.DIRECTORY_NOTICE
+                    ),
+                    origin = ResponseOrigin.DIRECTORY_NOTICE,
+                    metadata = ResponseMetadata(
+                        route = ModelRouter.Route.LOCAL,
+                        processingTimeMs =
+                            System.currentTimeMillis() - startTime,
+                        toolUsage = 0,
+                        memoryUsage = 0
+                    )
+                )
+
+                conversationRepository.saveMessage(
+                    "user", query
+                )
+                conversationRepository.saveMessage(
+                    "assistant", continuityNotice
+                )
+
+                return@coroutineScope response
+            }
+        }
+        // JARVIS-STANDALONE-ORIGIN:
+        // Emergency handlers above retain priority.
+        // Record a standalone user-supplied origin without
+        // geocoding it, accessing GPS or invoking Llama.
+        if (activeConversationTask == null && !isFreshCompleteJourney) {
+            val suppliedLocation =
+                ConversationTaskState.standaloneOriginOrNull(query)
+
+            if (suppliedLocation != null) {
+                val fact = ConversationTaskState.Fact(
+                    value = suppliedLocation,
+                    provenance =
+                        ConversationTaskState.Provenance.USER_SUPPLIED
+                )
+
+                activeConversationTask = ConversationTaskState.Task(
+                    kind = ConversationTaskState.Kind.GENERAL,
+                    goal = "User-supplied starting location",
+                    fields = mapOf(
+                        ConversationTaskState.Field.ORIGIN to fact
+                    )
+                )
+
+                val notice =
+                    "I've recorded your stated location as " +
+                        "$suppliedLocation. " +
+                        "This is information you provided, " +
+                        "not a verified GPS position. " +
+                        "You can tell me where you want to go, " +
+                        "which places to find, or what errands " +
+                        "you need to complete."
+
+                val response = AssistantResponse(
+                    text = notice,
+                    voiceOptimizedText = notice,
+                    confidence = EvidenceConfidencePolicy.level(
+                        ResponseOrigin.DIRECTORY_NOTICE
+                    ),
+                    origin = ResponseOrigin.DIRECTORY_NOTICE,
+                    metadata = ResponseMetadata(
+                        route = ModelRouter.Route.LOCAL,
+                        processingTimeMs =
+                            System.currentTimeMillis() - startTime,
+                        toolUsage = 0,
+                        memoryUsage = 0
+                    )
+                )
+
+                conversationRepository.saveMessage("user", query)
+                conversationRepository.saveMessage(
+                    "assistant",
+                    notice
+                )
+
+                return@coroutineScope response
+            }
+        }
+        val journeyContinuation =
+            ConversationTaskState.journeyFollowUpOrNull(
+                activeConversationTask,
+                query
+            )
+
+        if (journeyContinuation != null && !isFreshCompleteJourney) {
+            activeConversationTask = journeyContinuation.first
+            val notice = journeyContinuation.second
+
+            val response = AssistantResponse(
+                text = notice,
+                voiceOptimizedText = notice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage(
+                "assistant", notice
+            )
+
+            return@coroutineScope response
+        }
+        val geoRoutingQuery =
+            JarvisGeoRoutingRepair.normalize(
+                JarvisGeoConversationWording.normalize(
+                    JarvisConversationStabilityPolicy
+                        .normalizeGeographicRequest(query)
+                )
+            )
+
+
+        // P3-B1D: Explicit, staging-only geographic waypoint search.
+        // Emergency handling remains above this block.
+        // Existing ordinary journey handling remains below it.
+        // JARVIS-GEO-CONTROLLER-FOLLOWUP-V1
+        // Explicit place-category requests are handled before
+        // unrestricted local-model generation.
+        // They never inherit GPS or navigation destinations.
+        val geoFollowUpText = query.trim()
+            .lowercase(java.util.Locale.ROOT)
+            .replace(Regex("""\s+"""), " ")
+            .trimEnd('.', '?', '!')
+            .trim()
+
+        val geoCategories = listOf(
+            "hospitals", "clinics", "pharmacies",
+            "schools", "universities", "banks",
+            "hotels", "guesthouses", "embassies"
+        )
+
+        val geoCategoryPattern =
+            geoCategories.joinToString("|")
+
+        val explicitCategoryFollowUp = Regex(
+            "^(?:find|show|show me)\\s+(?:the\\s+)?" +
+                "($geoCategoryPattern)(?:\\s+too)?" +
+                "(?:\\s*,?\\s+and\\s+(?:the\\s+)?" +
+                "($geoCategoryPattern)(?:\\s+too)?)?$"
+        ).matchEntire(geoFollowUpText)
+
+        if (explicitCategoryFollowUp != null) {
+            val firstCategory =
+                explicitCategoryFollowUp.groupValues[1]
+            val secondCategory =
+                explicitCategoryFollowUp.groupValues[2]
+
+            val isClearMultiCategoryRequest =
+                secondCategory.isNotBlank()
+
+            val isExplicitAdditionalSearch =
+                Regex("""\btoo\b""")
+                    .containsMatchIn(geoFollowUpText)
+
+            if (
+                !isFreshCompleteJourney &&
+                (isClearMultiCategoryRequest ||
+                    isExplicitAdditionalSearch)
+            ) {
+                val requestedCategories =
+                    listOf(firstCategory, secondCategory)
+                        .filter { it.isNotBlank() }
+                        .distinct()
+
+                onUpdate("Searching Kampala place categories...")
+
+                val parts = mutableListOf<String>()
+
+                for (category in requestedCategories) {
+                    val result =
+                        explicitGeoDiscovery.answerOrNull(
+                            "find $category across kampala"
+                        )
+
+                    parts.add(
+                        result
+                            ?: "Geographic discovery could not " +
+                                "process $category."
+                    )
+                }
+
+                val geoNotice =
+                    parts.joinToString("\n\n---\n\n")
+
+                val geoResponse = AssistantResponse(
+                    text = geoNotice,
+                    voiceOptimizedText = geoNotice,
+                    confidence = EvidenceConfidencePolicy.level(
+                        ResponseOrigin.DIRECTORY_NOTICE
+                    ),
+                    origin = ResponseOrigin.DIRECTORY_NOTICE,
+                    metadata = ResponseMetadata(
+                        route = ModelRouter.Route.LOCAL,
+                        processingTimeMs =
+                            System.currentTimeMillis() - startTime,
+                        toolUsage = requestedCategories.size,
+                        memoryUsage = 0
+                    )
+                )
+
+                conversationRepository.saveMessage(
+                    "user", query
+                )
+                conversationRepository.saveMessage(
+                    "assistant", geoNotice
+                )
+
+                return@coroutineScope geoResponse
+            }
+        }
+        val p3b1dNotice =
+            p3b1dWaypointSearch.answerOrNull(query)
+
+        if (p3b1dNotice != null) {
+            resetNavigationContext()
+
+            val response = AssistantResponse(
+                text = p3b1dNotice,
+                voiceOptimizedText = p3b1dNotice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage(
+                "assistant",
+                p3b1dNotice
+            )
+
+            return@coroutineScope response
+        }
+        // P3-B1F: Recognize clear multi-stage errand requests
+        // before category-only food discovery or general AI fallback.
+        // No location is geocoded and no route is authorized.
+        val p3b1fNotice =
+            KampalaP3B1FJourneyGuard.noticeOrNull(query)
+
+        if (p3b1fNotice != null) {
+            // Carry an explicitly stated origin into a new
+            // itinerary before resetting older navigation state.
+            val carriedOrigin =
+                activeConversationTask
+                    ?.takeIf {
+                        it.kind == ConversationTaskState.Kind.GENERAL &&
+                            it.goal == "User-supplied starting location"
+                    }
+                    ?.get(ConversationTaskState.Field.ORIGIN)
+
+            resetNavigationContext()
+
+            // P3-JOURNEY-CONTINUITY:
+            // Keep the user-supplied goal across follow-up turns.
+            activeConversationTask = ConversationTaskState.Task(
+                kind = ConversationTaskState.Kind.NAVIGATION,
+                goal = query,
+                fields = if (carriedOrigin != null) {
+                    mapOf(
+                        ConversationTaskState.Field.ORIGIN to carriedOrigin
+                    )
+                } else {
+                    emptyMap()
+                }
+            )
+
+            val journeyNotice = if (carriedOrigin != null) {
+                p3b1fNotice.replace(
+                    "Starting point: Not provided",
+                    "Starting point: ${carriedOrigin.value} (user supplied)"
+                )
+            } else {
+                p3b1fNotice
+            }
+
+            val response = AssistantResponse(
+                text = journeyNotice,
+                voiceOptimizedText = journeyNotice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage(
+                "assistant", journeyNotice
+            )
+
+            return@coroutineScope response
+        }
+        val explicitGeoCommand =
+            explicitGeoDiscovery.answerOrNull(geoRoutingQuery)
+
+
+        if (explicitGeoCommand != null) {
+            onUpdate("Checking experimental Kampala map listings...")
+
+            // A new geographic search is not a continuation
+            // of a previous navigation request.
+            resetNavigationContext()
+
+            val geoNotice = explicitGeoCommand
+
+            val geoResponse = AssistantResponse(
+                text = geoNotice,
+                voiceOptimizedText = geoNotice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", geoNotice)
+
+            return@coroutineScope geoResponse
+        }
+
+        // P3-B1B:
+        // Explicit multi-stop journeys must not enter the existing
+        // two-point Google Maps handoff.
+        // Emergency and geographic search priority remain unchanged.
+        //
+        // No geographic bounds have been confirmed for these waypoints.
+        // Therefore no provider query, coordinates, route or ETA
+        // are produced here.
+        val multiStopJourney =
+            KampalaJourneyIntentResolver.resolve(query)
+                ?.takeIf { it.stops.isNotEmpty() }
+
+        if (multiStopJourney != null) {
+            onUpdate("Checking the requested journey stops...")
+
+            // Clear stale two-point destination and follow-up state.
+            resetNavigationContext()
+
+            val notice =
+                KampalaP3B1MultiStopNotice.format(multiStopJourney)
+
+            val response = AssistantResponse(
+                text = notice,
+                voiceOptimizedText = notice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage(
+                "assistant",
+                notice
+            )
+
+            return@coroutineScope response
+        }
+        // CDI.6.0-A6.9-D4E-R4:
+        // A fresh complete journey must supersede any older
+        // unresolved destination or navigation follow-up.
+        // Emergency and explicit map-search handling stay above.
+        val directJourney =
+            KampalaFreshJourneyPriority.resolveOrNull(query)
+
+        // CDI.6.0-A6.9-D4E-R2:
+        // Resolve a complete journey against source-backed data.
+        // A user-supplied name alone is not a verified destination.
+        if (directJourney != null) {
+            onUpdate("Checking Kampala journey destination...")
+
+            // A complete new journey replaces the previous
+            // navigation and destination-selection context.
+            resetNavigationContext()
+
+            val destinationName = directJourney.destination
+            val requestedOrigin = directJourney.origin
+
+            val directoryResult = kampalaPlacesRepository.search(
+                query = destinationName
+            )
+
+            val exactPlaces =
+                com.example.jarvis.core.network
+                    .KampalaDirectoryResolutionAdapter
+                    .matchingDirectoryPlaces(
+                        requestedName = destinationName,
+                        result = directoryResult
+                    )
+
+            val journeyNotice: String
+            val journeyOrigin: ResponseOrigin
+
+            when {
+                exactPlaces.size == 1 -> {
+                    val place = exactPlaces.single()
+
+                    // Retain user-supplied journey endpoints.
+                    // The directory result remains separate.
+                    pendingUnverifiedOrigin = requestedOrigin
+                    pendingUnverifiedDestination =
+                        destinationName.take(120)
+
+                    // A unique directory listing provides a
+                    // source-backed destination, not a verified route.
+                    val encodedOrigin = java.net.URLEncoder.encode(
+                        "$requestedOrigin, Kampala, Uganda",
+                        "UTF-8"
+                    )
+
+                    val encodedDestination = java.net.URLEncoder.encode(
+                        "${place.name}, ${place.address}",
+                        "UTF-8"
+                    )
+
+                    val mapsUrl =
+                        "https://www.google.com/maps/dir/?api=1" +
+                            "&origin=$encodedOrigin" +
+                            "&destination=$encodedDestination"
+
+                    journeyOrigin = ResponseOrigin.DIRECTORY_RESULT
+
+                    journeyNotice =
+                        "Your journey\n\n" +
+                            "From: $requestedOrigin\n" +
+                            "To: ${place.name}\n" +
+                            "Listed address: ${place.address}\n" +
+                            "Area: ${place.area}\n" +
+                            "Directory source: ${place.sourceUrl}\n" +
+                            "Source checked: ${place.verifiedAt}\n\n" +
+                            "Jarvis has not calculated or verified " +
+                            "the route. Confirm both locations " +
+                            "in Google Maps before travelling.\n\n" +
+                            "Open directions: $mapsUrl"
+                }
+
+                exactPlaces.size > 1 -> {
+                    journeyOrigin = ResponseOrigin.DIRECTORY_NOTICE
+
+                    if (exactPlaces.size <= 10) {
+                        pendingDestinationChoices =
+                            exactPlaces.map { place ->
+                                place.name to place.address
+                            }.distinct()
+
+                        journeyNotice =
+                            buildString {
+                                appendLine(
+                                    "Your starting point is " +
+                                        "$requestedOrigin."
+                                )
+                                appendLine(
+                                    "Several directory listings match " +
+                                        destinationName +
+                                        ". Choose the exact destination:"
+                                )
+                                appendLine()
+
+                                exactPlaces
+                                    .map { it.name to it.address }
+                                    .distinct()
+                                    .forEachIndexed { index, choice ->
+                                        appendLine(
+                                            "${index + 1}. " +
+                                                "${choice.first} — " +
+                                                choice.second
+                                        )
+                                    }
+
+                                appendLine()
+                                append(
+                                    "No route has been calculated. " +
+                                        "Confirm the destination " +
+                                        "before opening directions."
+                                )
+                            }
+                    } else {
+                        journeyNotice =
+                            "Your starting point is $requestedOrigin. " +
+                                "More than ten directory listings match " +
+                                "$destinationName. Please specify an " +
+                                "area, branch, or street address. " +
+                                "No route has been calculated."
+                    }
+                }
+
+                else -> {
+                    // A published institutional destination may
+                    // be available even when the general directory
+                    // did not return an exact listing.
+                    val canonicalName =
+                        KampalaSourceBackedPlacePolicy
+                            .normalizeRequestedName(destinationName)
+
+                    val publishedPlace =
+                        KampalaSourceBackedPlacePolicy
+                            .resolveOrNull(canonicalName)
+
+                    journeyOrigin = ResponseOrigin.DIRECTORY_NOTICE
+
+                    if (publishedPlace != null) {
+                        pendingUnverifiedDestination =
+                            canonicalName.take(120)
+                        pendingUnverifiedOrigin = requestedOrigin
+
+                        sourceBackedJourney =
+                            KampalaDestinationJourney
+                                .fromPublishedPlace(
+                                    publishedPlace,
+                                    requestedOrigin
+                                )
+
+                        val publishedNotice =
+                            KampalaSourceBackedPlacePolicy
+                                .sourceNoticeOrNull(canonicalName)
+                                .orEmpty()
+
+                        // CDI.6.0-A6.9-D4F-B:
+                        // Reuse the established published-place
+                        // Maps policy and existing UI button parser.
+                        // The link is a user-controlled handoff,
+                        // not a calculated or verified route.
+                        val publishedJourneyNotice =
+                            "Your starting point is " +
+                                "$requestedOrigin.\n\n" +
+                                publishedNotice +
+                                "\n\nJarvis has not calculated " +
+                                "or verified a route. Confirm the " +
+                                "published destination and your " +
+                                "starting point in Google Maps."
+
+                        journeyNotice =
+                            KampalaPublishedJourneyAction.append(
+                                publishedJourneyNotice,
+                                sourceBackedJourney
+                            )
+                    } else {
+                        // Neither the directory nor the
+                        // published-place policy verified a
+                        // unique destination. No maps URL.
+                        pendingUnverifiedDestination =
+                            canonicalName.take(120)
+                        pendingUnverifiedOrigin = requestedOrigin
+
+                        // A missing directory record does not prevent
+                        // a user-controlled Maps search.
+                        // The supplied locations remain unverified.
+                        val encodedOrigin =
+                            java.net.URLEncoder.encode(
+                                "$requestedOrigin, Kampala, Uganda",
+                                "UTF-8"
+                            )
+
+                        val encodedDestination =
+                            java.net.URLEncoder.encode(
+                                "$destinationName, Kampala, Uganda",
+                                "UTF-8"
+                            )
+
+                        val mapsUrl =
+                            "https://www.google.com/maps/dir/?api=1" +
+                                "&origin=$encodedOrigin" +
+                                "&destination=$encodedDestination"
+
+                        // Optional device-geocoder suggestion.
+                        // Never silently replace the user's destination.
+                        val providerSuggestion =
+                            navigationGeoSuggestion
+                                ?.suggest(destinationName)
+                                ?: kampalaDeviceGeocoder.suggest(
+                                    destinationName
+                                )
+
+                        val providerSuggestionLine =
+                            providerSuggestion?.let {
+                                "Provider suggestion: $it\n"
+                            }.orEmpty()
+
+                        val coverageNotice =
+                            if (
+                                directoryResult is
+                                    com.example.jarvis.core.network
+                                        .KampalaPlacesRepository
+                                        .SearchResult.Failure
+                            ) {
+                                "The Kampala directory is " +
+                                    "currently unavailable."
+                            } else {
+                                "I couldn't confirm an exact " +
+                                    "directory listing."
+                            }
+
+                        journeyNotice =
+                            "Your journey\n\n" +
+                                "From: $requestedOrigin\n" +
+                                "To: $destinationName\n\n" +
+                                "$coverageNotice " + providerSuggestionLine +
+                                "These locations were supplied " +
+                                "by you and have not been " +
+                                "independently verified by Jarvis. " +
+                                "You can open Google Maps to " +
+                                "search for both locations and " +
+                                "check available routes. " +
+                                "Confirm the correct destination " +
+                                "and starting point before " +
+                                "travelling.\n\n" +
+                                "Open directions: $mapsUrl"
+                    }
+                }
+            }
+
+            val response = AssistantResponse(
+                text = journeyNotice,
+                voiceOptimizedText = journeyNotice,
+                confidence = EvidenceConfidencePolicy.level(
+                    journeyOrigin
+                ),
+                origin = journeyOrigin,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage(
+                "assistant",
+                journeyNotice
+            )
+
+            return@coroutineScope response
+        }
+        // CDI.5.61-A2: Resolve a contextual navigation follow-up
+        // before the request can fall through to the local model.
+        // CDI.6.0-A6.7-A2:
+        // Preserve the published destination when the user
+        // supplies or corrects the journey origin.
+        // This does not authorize an unverified journey card.
+        val sourceJourney = sourceBackedJourney
+        val correctedSourceOrigin =
+            KampalaContextualNavigationPolicy.correctedOriginOrNull(query)
+
+        if (
+            sourceJourney != null &&
+            pendingUnverifiedDestination != null &&
+            correctedSourceOrigin != null
+        ) {
+            val updatedJourney =
+                sourceJourney.withUserOrigin(correctedSourceOrigin)
+
+            sourceBackedJourney = updatedJourney
+            pendingUnverifiedOrigin = correctedSourceOrigin
+
+            val notice = updatedJourney.originFollowUpNotice()
+
+            val response = AssistantResponse(
+                text = notice,
+                voiceOptimizedText = notice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", notice)
+            return@coroutineScope response
+        }
+
+        // CDI.6.0-A6.6-F:
+        // A split correction such as "actually," must not discard
+        // the pending place before the next message supplies its origin.
+        if (
+            KampalaSplitCorrectionPolicy.shouldPreserveUnverifiedDestination(
+                pendingUnverifiedDestination,
+                query
+            )
+        ) {
+            val notice =
+                "I'm following your correction. " +
+                    "Your destination is still " +
+                    "${pendingUnverifiedDestination}. " +
+                    "Please finish telling me what you want to change. " +
+                    "I haven't calculated a route."
+
+            val response = AssistantResponse(
+                text = notice,
+                voiceOptimizedText = notice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", notice)
+            return@coroutineScope response
+        }
+
+        if (KampalaContextualNavigationPolicy.isFollowUp(query)) {
+            val remembered = lastDirectoryDestination
+                ?: pendingNavigationDestination
+                ?: pendingUnverifiedDestination
+
+            val rememberedIsUnverified =
+                pendingUnverifiedDestination != null &&
+                    pendingNavigationDestination == null &&
+                    lastDirectoryDestination == null
+
+            // CDI.6.0-A6.5-C: Origin comes directly from the user.
+            // Never replace the remembered destination with it.
+            val correctedOrigin =
+                KampalaContextualNavigationPolicy.correctedOriginOrNull(query)
+
+            lastDirectoryDestination = null
+
+            val notice = when {
+                pendingDestinationChoices != null ->
+                    "Please select a destination from the directory " +
+                        "results first, then I can help with directions."
+
+                remembered != null -> {
+                    // CDI.6.0-A6.6-C:
+                    // Never promote an unverified place name into
+                    // the existing confirmed-navigation state.
+                    if (rememberedIsUnverified) {
+                        pendingNavigationDestination = null
+                        if (correctedOrigin != null) {
+                            pendingUnverifiedOrigin = correctedOrigin
+                        }
+                    } else {
+                        pendingNavigationDestination = remembered
+                        pendingUnverifiedOrigin = null
+                    }
+
+                    pendingDestinationChoices = null
+
+                    if (correctedOrigin != null && rememberedIsUnverified) {
+                        "You're starting from $correctedOrigin and " +
+                            "want to reach $remembered. " +
+                            "I haven't verified which exact location " +
+                            "you mean, so I can't provide reliable " +
+                            "directions yet. Which branch or exact " +
+                            "location are you heading to?"
+                    } else if (correctedOrigin != null) {
+                        "Your starting point is $correctedOrigin, " +
+                            "and the destination remains $remembered. " +
+                            "I have not calculated or verified a route. " +
+                            "Please confirm both locations in Google Maps " +
+                            "before starting navigation."
+                    } else {
+                        "I can help you get to $remembered. " +
+                            "Where will you be starting from? " +
+                            "Google Maps can calculate directions after " +
+                            "you confirm both locations."
+                    }
+                }
+
+                else ->
+                    "Which place would you like directions to? " +
+                        "Please tell me the destination first."
+            }
+
+            val response = AssistantResponse(
+                text = notice,
+                voiceOptimizedText = notice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", notice)
+            return@coroutineScope response
+        }
+
+        // CDI.6.0-A6.6-A:
+        // A brief explicit branch clarification may complete the
+        // previous unverified destination name. It still requires
+        // a fresh directory lookup and source verification.
+        val clarifiedDestinationQuery =
+            KampalaContextualNavigationPolicy
+                .clarifiedDestinationQueryOrNull(
+                    pendingUnverifiedDestination,
+                    query
+                )
+
+        // Ordinary requests must not inherit stale location context.
+        // The only retained value is the locally prepared lookup query.
+        lastDirectoryDestination = null
+        pendingUnverifiedDestination = null
+
+        // Preserve the origin only for an explicit branch
+        // clarification of the immediately pending destination.
+        if (clarifiedDestinationQuery == null) {
+            pendingUnverifiedOrigin = null
+            sourceBackedJourney = null
+        }
 
         // CDI.5.53-B1: Resolve a numbered directory selection.
         val pendingChoices = pendingDestinationChoices
@@ -168,62 +1431,6 @@ class AssistantController @Inject constructor(
                 awaitingOrigin = pendingNavigationDestination != null
             )
 
-        val directJourney =
-            (navigationIntent as?
-                KampalaNavigationIntentCoordinator.Intent.CompleteJourney)
-                ?.journey
-
-        if (directJourney != null) {
-            pendingNavigationDestination = null
-            pendingDestinationChoices = null
-
-            onUpdate("Preparing Kampala journey...")
-
-            val mapOrigin = java.net.URLEncoder.encode(
-                "${directJourney.origin}, Kampala, Uganda",
-                "UTF-8"
-            )
-
-            val mapDestination = java.net.URLEncoder.encode(
-                "${directJourney.destination}, Kampala, Uganda",
-                "UTF-8"
-            )
-
-            val mapsUrl =
-                "https://www.google.com/maps/dir/?api=1" +
-                    "&origin=$mapOrigin" +
-                    "&destination=$mapDestination"
-
-            val notice =
-                "Journey: ${directJourney.origin} to " +
-                    "${directJourney.destination}, Kampala. " +
-                    "These are the locations you provided. " +
-                    "Jarvis has not independently verified them " +
-                    "or calculated a route. " +
-                    "Confirm both locations in Google Maps.\n\n" +
-                    "Open directions: $mapsUrl"
-
-            val response = AssistantResponse(
-                text = notice,
-                voiceOptimizedText = notice,
-                confidence = EvidenceConfidencePolicy.level(
-                    ResponseOrigin.DIRECTORY_NOTICE
-                ),
-                origin = ResponseOrigin.DIRECTORY_NOTICE,
-                metadata = ResponseMetadata(
-                    route = ModelRouter.Route.LOCAL,
-                    processingTimeMs =
-                        System.currentTimeMillis() - startTime,
-                    toolUsage = 0,
-                    memoryUsage = 0
-                )
-            )
-
-            conversationRepository.saveMessage("user", query)
-            conversationRepository.saveMessage("assistant", notice)
-
-            return@coroutineScope response
-        }
         // CDI.5.58-A2: Use the classified origin follow-up.
         val startingPoint =
             (navigationIntent as?
@@ -232,8 +1439,15 @@ class AssistantController @Inject constructor(
 
         val pendingDestination = pendingNavigationDestination
 
+        // CDI.6.0-A6.6-C:
+        // A pending destination clarification is never a new origin.
+        // The existing directions-card path may only run when
+        // an actual verified/directory destination is pending.
         if (
-            pendingDestination != null &&
+            KampalaNavigationTurnSafetyPolicy.canHandleOriginReply(
+                pendingDestination,
+                clarifiedDestinationQuery
+            ) &&
             !startingPoint.isNullOrBlank() &&
             startingPoint.length <= 80
         ) {
@@ -305,15 +1519,47 @@ class AssistantController @Inject constructor(
                 query = destinationOnly
             )
 
+            // CDI.5.58-D: Keep directory lookup confidence explicit.
+            val destinationConfidence = when (directoryResult) {
+                is KampalaPlacesRepository.SearchResult.Success ->
+                    KampalaDestinationConfidencePolicy.resolve(
+                        requestedName = destinationOnly,
+                        entries = directoryResult.places.map {
+                            it.name to it.address
+                        },
+                        directoryAvailable = true
+                    )
+
+                is KampalaPlacesRepository.SearchResult.Failure ->
+                    KampalaDestinationConfidencePolicy.resolve(
+                        requestedName = destinationOnly,
+                        entries = emptyList(),
+                        directoryAvailable = false
+                    )
+            }
+
             val exactMatches = when (directoryResult) {
                 is KampalaPlacesRepository.SearchResult.Success -> {
                     val entries = directoryResult.places
 
-                    val indices =
-                        KampalaDestinationMatchPolicy.exactIndices(
-                            destinationOnly,
-                            entries.map { it.name to it.address }
-                        )
+                    val indices = when (destinationConfidence) {
+                        is KampalaDestinationConfidencePolicy
+                            .Resolution.ExactListing ->
+                            listOf(destinationConfidence.index)
+
+                        is KampalaDestinationConfidencePolicy
+                            .Resolution.Ambiguous ->
+                            destinationConfidence.indices
+
+                        is KampalaDestinationConfidencePolicy
+                            .Resolution.TooManyMatches ->
+                            KampalaDestinationMatchPolicy.exactIndices(
+                                destinationOnly,
+                                entries.map { it.name to it.address }
+                            )
+
+                        else -> emptyList()
+                    }
 
                     indices.map { entries[it] }
                 }
@@ -394,8 +1640,9 @@ class AssistantController @Inject constructor(
 
                     val verificationNotice =
                         if (
-                            directoryResult is
-                                KampalaPlacesRepository.SearchResult.Failure
+                            destinationConfidence is
+                                KampalaDestinationConfidencePolicy
+                                    .Resolution.DirectoryUnavailable
                         ) {
                             "The directory could not verify the " +
                                 "destination right now."
@@ -516,9 +1763,24 @@ class AssistantController @Inject constructor(
         val namedNavigationMatch = Regex(
             """^(?:take\s+me\s+to|navigate\s+to|directions\s+to|how\s+(?:do|can)\s+i\s+get\s+to)\s+(.+?)\s*[?.!]?$""",
             RegexOption.IGNORE_CASE
-        ).matchEntire(query.trim())
+        ).matchEntire(
+            (
+                if (clarifiedDestinationQuery != null) {
+                    "how do i get to $clarifiedDestinationQuery"
+                } else {
+                    query
+                }
+            ).trim()
+        )
 
         if (namedNavigationMatch != null) {
+            // CDI.6.0-A6.6-C:
+            // A new named navigation request cannot inherit the
+            // previous unverified journey's starting point.
+            if (clarifiedDestinationQuery == null) {
+                pendingUnverifiedOrigin = null
+            }
+
             val destinationQuery = namedNavigationMatch.groupValues[1]
                 .trim()
                 .trimEnd('?', '.', '!')
@@ -537,17 +1799,18 @@ class AssistantController @Inject constructor(
                     query = destinationQuery
                 )
 
-                val matches = when (destinationResult) {
-                    is KampalaPlacesRepository.SearchResult.Success ->
-                        destinationResult.places.filter { place ->
-                            place.name.trim().equals(
-                                destinationQuery,
-                                ignoreCase = true
-                            )
-                        }
-                    is KampalaPlacesRepository.SearchResult.Failure ->
-                        emptyList()
-                }
+                // CDI.6.0-A6.9-C2:
+                // Resolve named directory destinations through the
+                // shared, source-aware place resolution contract.
+                // Never promote unavailable or ambiguous data
+                // into an automatically selected destination.
+                val matches =
+                    com.example.jarvis.core.network
+                        .KampalaDirectoryResolutionAdapter
+                        .matchingDirectoryPlaces(
+                            requestedName = destinationQuery,
+                            result = destinationResult
+                        )
 
                 val destinationNotice = when {
                     matches.size == 1 -> {
@@ -613,10 +1876,76 @@ class AssistantController @Inject constructor(
                     else -> {
                         pendingDestinationChoices = null
                         pendingNavigationDestination = null
-                        "I couldn't confirm an exact directory listing " +
-                            "for $destinationQuery right now. " +
-                            "I won't invent a destination address " +
-                            "or generate an unverified journey."
+
+                        // Retain the user's words, not an inferred address.
+                        // CDI.6.0-A6.6-D2:
+                        // Normalize the place name without upgrading
+                        // it into a confirmed navigation destination.
+                        val canonicalDestination =
+                            KampalaSourceBackedPlacePolicy
+                                .normalizeRequestedName(destinationQuery)
+
+                        pendingUnverifiedDestination =
+                            canonicalDestination.take(120)
+
+                        val officialPlace =
+                            KampalaSourceBackedPlacePolicy.resolveOrNull(
+                                canonicalDestination
+                            )
+
+                        val retainedOrigin = pendingUnverifiedOrigin
+
+                        // Keep published place provenance with the
+                        // conversational destination context.
+                        sourceBackedJourney =
+                            officialPlace?.let { place ->
+                                KampalaDestinationJourney
+                                    .fromPublishedPlace(
+                                        place,
+                                        retainedOrigin
+                                    )
+                            }
+
+                        if (officialPlace != null) {
+                            val publishedNotice =
+                                KampalaSourceBackedPlacePolicy
+                                    .sourceNoticeOrNull(
+                                        canonicalDestination
+                                    ).orEmpty()
+
+                            if (clarifiedDestinationQuery != null) {
+                                // CDI.6.0-A6.7-B:
+                                // This is a clarification of the same
+                                // published place, not a new route.
+                                KampalaSourceClarificationResponsePolicy
+                                    .respond(
+                                        officialPlace,
+                                        retainedOrigin
+                                    )
+                            } else if (retainedOrigin != null) {
+                                "Your starting point remains " +
+                                    "$retainedOrigin. $publishedNotice"
+                            } else {
+                                publishedNotice
+                            }
+                        } else if (retainedOrigin != null &&
+                            clarifiedDestinationQuery != null
+                        ) {
+                            "Your starting point remains $retainedOrigin. " +
+                                "You want to reach $destinationQuery. " +
+                                "I searched the directory again but " +
+                                "couldn't verify an exact destination. " +
+                                "I won't create a directions link from " +
+                                "an unverified location. Please provide " +
+                                "a street address, nearby landmark, or " +
+                                "another specific destination detail."
+                        } else {
+                            "You want to get to $destinationQuery. " +
+                                "I couldn't verify an exact directory " +
+                                "listing, so this is still an unverified " +
+                                "place name rather than a confirmed address. " +
+                                "Which branch or exact location do you mean?"
+                        }
                     }
                 }
 
@@ -776,6 +2105,20 @@ class AssistantController @Inject constructor(
                 area = placesRequest.area,
                 category = placesRequest.category
             )
+
+            // Remember only one nonempty directory listing.
+            // Never infer a chosen place from multiple results.
+            lastDirectoryDestination = when (searchResult) {
+                is KampalaPlacesRepository.SearchResult.Success ->
+                    KampalaContextualNavigationPolicy.uniqueDestination(
+                        searchResult.places.map {
+                            it.name to it.address
+                        }
+                    )
+
+                is KampalaPlacesRepository.SearchResult.Failure ->
+                    null
+            }
 
             val placesAnswer = KampalaPlacesResultPolicy.format(placesRequest, searchResult)
 
@@ -1014,8 +2357,113 @@ class AssistantController @Inject constructor(
 
             return@coroutineScope groundingResponse
         }
+        // Allow the existing deterministic journey handlers above
+        // to run first. Only unresolved navigation follow-ups reach
+        // this fail-safe before unrestricted model generation.
+        val unresolvedJourneyNotice =
+            JarvisConversationStabilityPolicy
+                .unresolvedJourneyFollowUpNotice(query)
+
+
+        if (unresolvedJourneyNotice != null) {
+            val response = AssistantResponse(
+                text = unresolvedJourneyNotice,
+                voiceOptimizedText = unresolvedJourneyNotice,
+                confidence = EvidenceConfidencePolicy.level(
+                    ResponseOrigin.DIRECTORY_NOTICE
+                ),
+                origin = ResponseOrigin.DIRECTORY_NOTICE,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs =
+                        System.currentTimeMillis() - startTime,
+                    toolUsage = 0,
+                    memoryUsage = 0
+                )
+            )
+
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage(
+                "assistant", unresolvedJourneyNotice
+            )
+
+            return@coroutineScope response
+        }
+        // CDI.6.0-A6.4-B3R:
+        // Run only after existing protected deterministic routes.
+        // Model proposals never initiate navigation or tool actions.
+        if (contextInterpretationEnabled) {
+            val taskSnapshot = activeConversationTask
+
+            val eligibility = ConversationInterpretationEligibility.evaluate(
+                task = taskSnapshot,
+                message = query,
+                explicitlyEnabled = true,
+                protectedRoute = false
+            )
+
+            if (eligibility ==
+                ConversationInterpretationEligibility.Decision.ELIGIBLE
+            ) {
+                val observation = withTimeoutOrNull(15000L) {
+                    conversationInterpretationProbe.evaluate(
+                        task = taskSnapshot,
+                        message = query,
+                        explicitlyEnabled = true
+                    )
+                }
+
+                if (observation?.status ==
+                    ConversationInterpretationProbe.Status.VALID_PROPOSAL
+                ) {
+                    val proposal = observation.proposal
+
+                    val existingDestination = taskSnapshot?.get(
+                        ConversationTaskState.Field.DESTINATION
+                    )
+
+                    // Do not allow a model classification to replace an
+                    // existing destination, even when it says CORRECTION.
+                    if (proposal != null &&
+                        !(proposal.field ==
+                            ConversationTaskState.Field.DESTINATION &&
+                            existingDestination != null)
+                    ) {
+                        val guarded = ConversationProposalApplication.apply(
+                            current = taskSnapshot,
+                            proposal = proposal
+                        )
+
+                        if (guarded.outcome ==
+                            ConversationProposalApplication.Outcome.APPLIED
+                        ) {
+                            activeConversationTask = guarded.task
+                        }
+
+                        Log.i(
+                            "JarvisContextIntegration",
+                            "outcome=${guarded.outcome.name}"
+                        )
+                    } else {
+                        Log.i(
+                            "JarvisContextIntegration",
+                            "outcome=REJECTED_DESTINATION_CHANGE"
+                        )
+                    }
+                } else {
+                    Log.i(
+                        "JarvisContextIntegration",
+                        "outcome=NO_VALID_PROPOSAL"
+                    )
+                }
+            }
+        }
+
         onUpdate("Thinking...")
-        val historyDeferred = async { conversationRepository.getLastMessages(5) }
+        // CDI.6.0-A3: Use the same local Room history that powers
+        // the visible chat. Do not depend on Firestore authentication
+        // or connectivity for conversational continuity.
+        val historyDeferred = async { localChatRepository.load() }
         val memoriesDeferred = async { retrievalManager.getRelevantMemories(3) }
         val contextDataDeferred = async { contextManager.getCurrentContext() }
 
@@ -1023,7 +2471,10 @@ class AssistantController @Inject constructor(
         val memories = memoriesDeferred.await()
         val contextData = contextDataDeferred.await()
 
-        val chatHistory = PromptHistoryPolicy.format(history.map { it.role to it.text })
+        val chatHistory = LocalConversationContextPolicy.prepare(
+            history.map { it.role to it.text },
+            currentQuery = query
+        )
         val retrievedContext = memories.joinToString("\n") { "- ${it.text}" }
         val promptMode = PromptModePolicy.select(query)
         val availableTools =
@@ -1232,11 +2683,21 @@ class AssistantController @Inject constructor(
             )
         }
 
+        // P2-B7C: final model-output guard before voice and persistence.
+        finalAnswerText = JarvisConversationStabilityPolicy.reviewModelAnswer(
+            query, finalAnswerText, toolUsageCount
+        )
+        finalAnswerText = JarvisP2B7COutputPolicy.review(
+            query, finalAnswerText
+        )
         val finalVoiceText = try {
             val candidate = responsePipeline.execute(
                 query, finalAnswerText, retrievedContext, currentRoute
             )
-            if (ModelOutputGuard.isUsable(candidate)) candidate else finalAnswerText
+            if (
+                ModelOutputGuard.isUsable(candidate) &&
+                !JarvisP2B7COutputPolicy.containsRawToolSyntax(candidate)
+            ) candidate else finalAnswerText
         } catch (e: Exception) {
             Log.w(TAG, "Voice generation failed; using safe answer", e)
             finalAnswerText

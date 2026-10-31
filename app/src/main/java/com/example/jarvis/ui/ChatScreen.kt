@@ -1,7 +1,11 @@
 package com.example.jarvis.ui
 
+import androidx.compose.material.icons.filled.MoreVert
+
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
@@ -165,6 +169,7 @@ fun ChatScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             Column(
                 modifier = Modifier
@@ -209,14 +214,16 @@ fun ChatScreen(
                 )
             }
 
-            Box(
+            Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
                 LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
                 contentPadding = PaddingValues(
                     horizontal = 16.dp,
                     vertical = 16.dp
@@ -267,8 +274,11 @@ fun ChatScreen(
                             }
                         },
                         modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(16.dp)
+                            .align(Alignment.End)
+                            .padding(
+                                horizontal = 16.dp,
+                                vertical = 4.dp
+                            )
                     ) {
                         Text("↓  Latest")
                     }
@@ -469,62 +479,99 @@ fun ChatHeader(
     onClearChat: () -> Unit = {},
     canClearChat: Boolean = false
 ) {
-    // Unified identity and model controls in one header surface.
+    val greyBackground = androidx.compose.ui.graphics.Color(0xFF191C21)
+    val greyIcon = androidx.compose.ui.graphics.Color(0xFFD6D9DE)
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp
+        color = greyBackground,
+        tonalElevation = 0.dp
     ) {
-        Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .height(48.dp)
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Surface(
-                modifier = Modifier.size(40.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.primaryContainer
+                modifier = Modifier.size(30.dp),
+                shape = RoundedCornerShape(9.dp),
+                color = androidx.compose.ui.graphics.Color(0xFF353940)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = "J",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        color = greyIcon
                     )
                 }
             }
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Jarvis",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Your Kampala assistant",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                text = "Jarvis",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                color = greyIcon
+            )
 
-            TextButton(
-                onClick = onClearChat,
-                enabled = canClearChat
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterEnd
             ) {
-                Text("Clear chat")
+                androidx.compose.material3.MaterialTheme(
+                    colorScheme = MaterialTheme.colorScheme.copy(
+                        primary = greyIcon
+                    )
+                ) {
+                    modelSelector()
+                }
             }
-        }
 
-        HorizontalDivider(
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-        )
-        modelSelector()
+            androidx.compose.material3.IconButton(
+                onClick = onClearChat,
+                enabled = canClearChat,
+                modifier = Modifier.size(48.dp)
+            ) {
+                androidx.compose.foundation.Canvas(
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    val iconColor = if (canClearChat) {
+                        greyIcon
+                    } else {
+                        greyIcon.copy(alpha = 0.4f)
+                    }
+
+                    val stroke = 1.8.dp.toPx()
+                    val w = size.width
+                    val h = size.height
+
+                    fun line(
+                        x1: Float, y1: Float,
+                        x2: Float, y2: Float
+                    ) {
+                        drawLine(
+                            color = iconColor,
+                            start = androidx.compose.ui.geometry.Offset(x1, y1),
+                            end = androidx.compose.ui.geometry.Offset(x2, y2),
+                            strokeWidth = stroke,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                    }
+
+                    line(w * .22f, h * .28f, w * .78f, h * .28f)
+                    line(w * .40f, h * .18f, w * .60f, h * .18f)
+                    line(w * .29f, h * .34f, w * .34f, h * .82f)
+                    line(w * .71f, h * .34f, w * .66f, h * .82f)
+                    line(w * .34f, h * .82f, w * .66f, h * .82f)
+                    line(w * .44f, h * .43f, w * .44f, h * .70f)
+                    line(w * .56f, h * .43f, w * .56f, h * .70f)
+                }
+            }
         }
     }
 }
@@ -548,14 +595,14 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
                     bottomEnd = 6.dp,
                     bottomStart = 20.dp
                 ),
-                color = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                color = androidx.compose.ui.graphics.Color(0xFF353A41),
+                contentColor = androidx.compose.ui.graphics.Color(0xFFE4E7EB)
             ) {
                 Text(
                     text = message.text,
                     modifier = Modifier.padding(
-                        horizontal = 16.dp,
-                        vertical = 12.dp
+                        horizontal = 14.dp,
+                        vertical = 10.dp
                     ),
                     style = MaterialTheme.typography.bodyLarge
                 )
@@ -578,17 +625,17 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                    shape = RoundedCornerShape(18.dp),
+                    color = androidx.compose.ui.graphics.Color(0xFF242A30)
                 ) {
                     Box(
                         modifier = Modifier.padding(
-                            horizontal = 16.dp,
-                            vertical = 14.dp
+                            horizontal = 14.dp,
+                            vertical = 11.dp
                         )
                     ) {
                         JarvisLinkedAnswer(
@@ -598,7 +645,7 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -639,7 +686,27 @@ fun ChatBubble(message: Message, onLongClick: () -> Unit = {}) {
 
                         MessageOrigin.DIRECTORY_NOTICE -> {
                             Text(
-                                text = "Directory information unavailable or incomplete",
+                                text = if (
+                                    JarvisGeoResultCardsModel.parse(message.text) != null
+                                ) {
+                                    "OpenStreetMap listings · Not independently verified"
+                                } else {
+                                    if (
+                                        message.text.contains(
+                                            "Open directions: https://www.google.com/maps/dir/?api=1"
+                                        )
+                                    ) {
+                                        "Google Maps handoff · Confirm route"
+                                    } else {
+                                        // JARVIS-GEO-FOOTER-STATUS-V1
+                                        if (message.text.startsWith("Named map search: ")) {
+                                            "OSM map listing · Current details not verified"
+                                        } else {
+                                            com.example.jarvis.core.ai.KampalaPublishedPlacePresentationPolicy
+                                                .directoryNoticeLabel(message.text)
+                                        }
+                                    }
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -675,8 +742,564 @@ private fun JarvisLinkedAnswer(
     messageText: String,
     onLongClick: () -> Unit
 ) {
+    // JARVIS-NAMED-PLACE-CARDS-V1
+    // Presentation only. Never alter retrieved place identities or coordinates.
+    if (messageText.startsWith("Named map search: ")) {
+        val namedLines = remember(messageText) {
+            messageText.lines()
+        }
+
+        val namedPlaceStarts = remember(messageText) {
+            namedLines.indices.filter { index ->
+                Regex("""^\d+\.\s+\S+""").containsMatchIn(
+                    namedLines[index].trim()
+                )
+            }
+        }
+
+        if (namedPlaceStarts.isNotEmpty()) {
+            val namedUriHandler = LocalUriHandler.current
+
+            val searchScope = namedLines.firstOrNull {
+                it.startsWith("Search scope: ") ||
+                    it.startsWith("Search area: ")
+            }?.substringAfter(": ")?.trim().orEmpty()
+
+            val searchTitle = namedLines.first()
+                .substringAfter("Named map search: ")
+                .trim()
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Places matching $searchTitle",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                if (searchScope.isNotEmpty()) {
+                    Text(
+                        text = "Map search · $searchScope",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                namedPlaceStarts.forEachIndexed { index, start ->
+                    val end = namedPlaceStarts.getOrNull(index + 1)
+                        ?: namedLines.size
+
+                    val section = namedLines.subList(start, end)
+
+                    val name = section.first().trim()
+                        .replaceFirst(Regex("""^\d+\.\s+"""), "")
+
+                    fun field(label: String): String =
+                        section.firstOrNull {
+                            it.startsWith(label)
+                        }?.removePrefix(label)?.trim().orEmpty()
+
+                    val address = field("Listed address: ")
+                    val category = field("Category: ")
+                        .replace('_', ' ')
+                    val coordinates = field("Map coordinates: ")
+                    val editedAt = field("OSM last edited: ")
+
+                    val mapsUrl = field("Open in Google Maps: ")
+                    val sourceUrl = field("Source record: ")
+
+                    fun trusted(url: String, host: String): Boolean =
+                        runCatching {
+                            val uri = java.net.URI(url)
+                            uri.scheme == "https" &&
+                                uri.host == host &&
+                                uri.userInfo == null
+                        }.getOrDefault(false)
+
+                    val validMaps = trusted(
+                        mapsUrl,
+                        "www.google.com"
+                    ) && mapsUrl.startsWith(
+                        "https://www.google.com/maps/search/?api=1&query="
+                    )
+
+                    val validSource = trusted(
+                        sourceUrl,
+                        "www.openstreetmap.org"
+                    ) && Regex(
+                        """https://www\.openstreetmap\.org/(?:node|way|relation)/\d+"""
+                    ).matches(sourceUrl)
+
+                    var showDetails by remember(messageText, index) {
+                        mutableStateOf(false)
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            if (address.isNotBlank()) {
+                                Text(
+                                    text = address,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+
+                            if (category.isNotBlank()) {
+                                Text(
+                                    text = category.replaceFirstChar {
+                                        it.uppercase()
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (validMaps) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            runCatching {
+                                                namedUriHandler.openUri(mapsUrl)
+                                            }
+                                        }
+                                    ) {
+                                        Text("Open Maps")
+                                    }
+                                }
+
+                                if (validSource) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            runCatching {
+                                                namedUriHandler.openUri(sourceUrl)
+                                            }
+                                        }
+                                    ) {
+                                        Text("OSM source")
+                                    }
+                                }
+                            }
+
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    showDetails = !showDetails
+                                }
+                            ) {
+                                Text(
+                                    if (showDetails) "Hide map details"
+                                    else "Map details"
+                                )
+                            }
+
+                            if (showDetails) {
+                                if (coordinates.isNotBlank()) {
+                                    Text(
+                                        text = "Coordinates: $coordinates",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+
+                                if (editedAt.isNotBlank()) {
+                                    Text(
+                                        text = "OSM record edited: " +
+                                            editedAt.take(10),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+
+                                Text(
+                                    text = "Map listing only. Current opening " +
+                                        "status and navigation entrances " +
+                                        "have not been verified.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Map data: OpenStreetMap contributors (ODbL). " +
+                        "Listings may be outdated.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            return
+        }
+    }
+    // P1-B: Render only successfully parsed geographic results as cards.
+    // Other messages retain the established linked-answer renderer.
+    // JARVIS-MULTI-AREA-CARDS-V1
+    // Recognize only Jarvis's structured multi-area responses.
+    // Never interpret ordinary AI text as map results.
+    if (messageText.trimStart().startsWith(
+            "Kampala multi-area map discovery"
+        )
+    ) {
+        val uriHandler = LocalUriHandler.current
+
+        val sections = remember(messageText) {
+            messageText.split(
+                Regex("""(?m)^\s*---\s*$""")
+            )
+        }
+
+        fun trustedUrl(
+            value: String,
+            allowedHost: String
+        ): String? = runCatching {
+            val uri = java.net.URI(value.trim())
+
+            if (
+                uri.scheme == "https" &&
+                uri.host == allowedHost &&
+                uri.userInfo == null &&
+                uri.fragment == null
+            ) {
+                value.trim()
+            } else {
+                null
+            }
+        }.getOrNull()
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement =
+                Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Kampala places",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            for (section in sections) {
+                val category = section.lineSequence()
+                    .firstOrNull {
+                        it.startsWith("Category: ")
+                    }
+                    ?.removePrefix("Category: ")
+                    ?.trim()
+                    .orEmpty()
+
+                if (category.isNotEmpty()) {
+                    Text(
+                        text = category.replaceFirstChar {
+                            it.uppercase()
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                val headings = Regex(
+                    """(?m)^(\d+)\.\s+(.+)$"""
+                ).findAll(section).toList()
+
+                if (headings.isEmpty()) {
+                    Text(
+                        text = "No place listings were returned " +
+                            "for this category.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                for ((position, heading) in headings.withIndex()) {
+                    val nextStart =
+                        headings.getOrNull(position + 1)
+                            ?.range?.first
+                            ?: section.length
+
+                    val details = section.substring(
+                        heading.range.last + 1,
+                        nextStart
+                    )
+
+                    fun detail(prefix: String): String? =
+                        details.lineSequence()
+                            .map { it.trim() }
+                            .firstOrNull {
+                                it.startsWith(prefix)
+                            }
+                            ?.removePrefix(prefix)
+                            ?.trim()
+                            ?.takeIf { it.isNotEmpty() }
+
+                    val name = heading.groupValues[2].trim()
+                    val searchArea = detail("Search area:")
+                    val address = detail("Listed address:")
+
+                    // JARVIS-GEO-SNAPSHOT-CARD-V1
+                    val snapshotGenerated =
+                        detail("Snapshot generated:")
+
+                    // JARVIS-OSM-RECORD-DATES-V1
+                    val osmLastEdited =
+                        detail("OSM last edited:")
+
+                    // Hide generic category/area labels, not
+                    // legitimately named businesses.
+                    val normalizedName = name
+                        .lowercase(java.util.Locale.ROOT)
+                        .replace(Regex("""\s+"""), " ")
+                        .trim()
+
+                    val normalizedCategory = category
+                        .lowercase(java.util.Locale.ROOT)
+                        .trim()
+
+                    val normalizedArea = searchArea
+                        ?.lowercase(java.util.Locale.ROOT)
+                        ?.trim()
+
+                    val genericCategoryNames = setOf(
+                        "hospital", "hospitals",
+                        "school", "schools",
+                        "bank", "banks",
+                        "hotel", "hotels",
+                        "clinic", "clinics",
+                        "pharmacy", "pharmacies",
+                        "university", "universities",
+                        "embassy", "embassies"
+                    )
+
+                    if (
+                        normalizedName.isBlank() ||
+                        (
+                            normalizedName in genericCategoryNames &&
+                            (
+                                normalizedName == normalizedCategory ||
+                                normalizedName.removeSuffix("s") ==
+                                    normalizedCategory.removeSuffix("s")
+                            )
+                        ) ||
+                        (
+                            normalizedArea != null &&
+                            normalizedName == normalizedArea
+                        )
+                    ) {
+                        continue
+                    }
+
+                    // JARVIS-GEO-CARD-ACTIONS-V2
+                    // The provider formatter writes label and URL
+                    // on the same line. Extract that labeled URL.
+                    val googleMaps = Regex(
+                        """(?m)^\s*Open in Google Maps:\s*(https://[^\s]+)\s*$"""
+                    ).find(details)
+                        ?.groupValues?.get(1)
+                        ?.let {
+                            trustedUrl(it, "www.google.com")
+                        }
+                        ?.takeIf { url ->
+                            runCatching {
+                                val uri = java.net.URI(url)
+                                uri.path == "/maps/search/" &&
+                                    uri.rawQuery
+                                        ?.startsWith("api=1&query=") == true
+                            }.getOrDefault(false)
+                        }
+
+                    val source = Regex(
+                        """(?m)^\s*Source record:\s*(https://[^\s]+)\s*$"""
+                    ).find(details)
+                        ?.groupValues?.get(1)
+                        ?.let {
+                            trustedUrl(
+                                it,
+                                "www.openstreetmap.org"
+                            )
+                        }
+                        ?.takeIf { url ->
+                            runCatching {
+                                java.net.URI(url).path.matches(
+                                    Regex(
+                                        """/(?:node|way|relation)/\d+"""
+                                    )
+                                )
+                            }.getOrDefault(false)
+                        }
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme
+                            .surfaceVariant.copy(alpha = 0.45f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement =
+                                Arrangement.spacedBy(7.dp)
+                        ) {
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+
+                            if (!searchArea.isNullOrBlank()) {
+                                Text(
+                                    text = searchArea,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme
+                                        .onSurfaceVariant
+                                )
+                            }
+
+                            if (!address.isNullOrBlank()) {
+                                Text(
+                                    text = address,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+
+                            if (!snapshotGenerated.isNullOrBlank()) {
+                                Text(
+                                    text = "Map snapshot: " +
+                                        snapshotGenerated.take(10),
+                                    style =
+                                        MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme
+                                        .onSurfaceVariant
+                                )
+                            }
+
+                            if (!osmLastEdited.isNullOrBlank()) {
+                                Text(
+                                    text = "OSM record last edited: " +
+                                        osmLastEdited.take(10),
+                                    style =
+                                        MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme
+                                        .onSurfaceVariant
+                                )
+                            }
+
+                            if (googleMaps != null) {
+                                androidx.compose.material3.Button(
+                                    onClick = {
+                                        runCatching {
+                                            uriHandler.openUri(googleMaps)
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Open in Google Maps")
+                                }
+                            }
+
+                            if (source != null) {
+                                androidx.compose.material3.TextButton(
+                                    onClick = {
+                                        runCatching {
+                                            uriHandler.openUri(source)
+                                        }
+                                    }
+                                ) {
+                                    Text("View map-data source")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val coverage = section.lineSequence()
+                    .map { it.trim() }
+                    .filter {
+                        it.startsWith("Unavailable searches:") ||
+                            it.startsWith("Incomplete coverage:") ||
+                            it.startsWith("Additional listings")
+                    }
+                    .toList()
+
+                for (warning in coverage) {
+                    Text(
+                        text = warning,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Text(
+                text = "Public map-data listings. " +
+                    "A map snapshot date is not the date an individual " +
+                    "place was last edited. Current business operation " +
+                    "is unverified. Addresses, opening hours and " +
+                    "routes require confirmation. Coverage remains limited.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        return
+    }
+    val geoResult = remember(messageText) {
+        JarvisGeoResultCardsModel.parse(messageText)
+    }
+
+    if (geoResult != null) {
+        JarvisGeoResultCards(geoResult)
+        return
+    }
+
     // M1F-I3C.119J: compact institutional source references.
     val uriHandler = LocalUriHandler.current
+
+    // CDI.6.0-A6.8-B2:
+    // Convert only a validated, Jarvis-generated Maps handoff
+    // into a user-controlled action.
+    // Keep institutional source formatting unchanged.
+    val mapsAction = remember(messageText) {
+        JarvisMapsActionPresentation.parseOrNull(messageText)
+    }
+
+    if (mapsAction != null) {
+        androidx.compose.foundation.layout.Column {
+            JarvisLinkedAnswer(
+                messageText = mapsAction.visibleText,
+                onLongClick = onLongClick
+            )
+
+            androidx.compose.foundation.layout.Spacer(
+                modifier = Modifier.height(10.dp)
+            )
+
+            androidx.compose.material3.OutlinedButton(
+                onClick = {
+                    runCatching {
+                        uriHandler.openUri(mapsAction.url)
+                    }
+                }
+            ) {
+                androidx.compose.material3.Text(
+                    text = mapsAction.label
+                )
+            }
+        }
+
+        return
+    }
 
     // CDI.5.52-E1: Recognize only Jarvis-generated Google Maps
     // directions handoffs. Never treat arbitrary links as journeys.
@@ -741,9 +1364,19 @@ private fun JarvisLinkedAnswer(
     if (journey != null) {
         val (origin, destination, directionsUrl) = journey
 
+        val providerSuggestion = remember(messageText) {
+            messageText.lineSequence()
+                .firstOrNull {
+                    it.startsWith("Provider suggestion: ")
+                }
+                ?.removePrefix("Provider suggestion: ")
+                ?.trim()
+                .orEmpty()
+        }
+
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 text = "Your journey",
@@ -753,7 +1386,7 @@ private fun JarvisLinkedAnswer(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -780,16 +1413,24 @@ private fun JarvisLinkedAnswer(
                 }
             }
 
+            if (providerSuggestion.isNotBlank()) {
+                Text(
+                    text = "Place lookup: $providerSuggestion",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
             Text(
-                text = "Jarvis has not verified this route. " +
-                    "Confirm the locations and directions in Google Maps.",
+                text = "Check both locations and the route in Google Maps.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             HorizontalDivider()
 
-            OutlinedButton(
+            Button(
+                modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     try {
                         uriHandler.openUri(directionsUrl)
@@ -798,7 +1439,7 @@ private fun JarvisLinkedAnswer(
                     }
                 }
             ) {
-                Text("↗  Open directions")
+                Text("Open in Google Maps")
             }
         }
 
@@ -1232,66 +1873,135 @@ fun ChatInputArea(
     onMicClicked: () -> Unit,
     enabled: Boolean = true
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+
+    val composerGrey = androidx.compose.ui.graphics.Color(0xFF292D33)
+    val micGrey = androidx.compose.ui.graphics.Color(0xFF353A41)
+    val softWhite = androidx.compose.ui.graphics.Color(0xFFE3E6EA)
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp
+        color = androidx.compose.ui.graphics.Color(0xFF191C21),
+        tonalElevation = 0.dp
     ) {
-        Column {
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-            )
-            Row(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedTextField(
-                value = text,
-                onValueChange = onTextChanged,
-                enabled = enabled,
+            Surface(
                 modifier = Modifier.weight(1f),
-                placeholder = {
-                    Text("Message Jarvis...")
-                },
-                minLines = 1,
-                maxLines = 5,
-                shape = RoundedCornerShape(20.dp),
-                keyboardOptions = KeyboardOptions(
-                    imeAction = ImeAction.Send
-                ),
-                keyboardActions = KeyboardActions(
-                    onSend = {
-                        if (enabled && text.isNotBlank()) onSendClicked()
-                    }
-                )
-            )
-
-            FilledIconButton(
-                onClick = onSendClicked,
-                enabled = enabled && text.isNotBlank(),
-                modifier = Modifier.size(48.dp)
+                shape = RoundedCornerShape(27.dp),
+                color = composerGrey
             ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send message"
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = text,
+                        onValueChange = onTextChanged,
+                        enabled = enabled,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 12.dp),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = softWhite
+                        ),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(
+                            softWhite
+                        ),
+                        minLines = 1,
+                        maxLines = 5,
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Send
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onSend = {
+                                if (enabled && text.isNotBlank()) {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                    onSendClicked()
+                                }
+                            }
+                        ),
+                        decorationBox = { innerTextField ->
+                            Box {
+                                if (text.isEmpty()) {
+                                    Text(
+                                        text = "Message Jarvis...",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = androidx.compose.ui.graphics.Color(
+                                            0xFFAEB5BE
+                                        ),
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        }
+                    )
+
+                    androidx.compose.material3.IconButton(
+                        onClick = {
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                            onSendClicked()
+                        },
+                        enabled = enabled && text.isNotBlank(),
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(32.dp),
+                            shape = RoundedCornerShape(50),
+                            color = if (enabled && text.isNotBlank()) {
+                                softWhite
+                            } else {
+                                androidx.compose.ui.graphics.Color(0xFF454B53)
+                            }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "Send message",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = if (enabled && text.isNotBlank()) {
+                                        composerGrey
+                                    } else {
+                                        androidx.compose.ui.graphics.Color(
+                                            0xFF9BA2AA
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             FilledTonalIconButton(
                 onClick = onMicClicked,
                 enabled = enabled,
                 modifier = Modifier.size(48.dp),
-                colors = if (isListening) {
-                    IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                } else {
-                    IconButtonDefaults.filledTonalIconButtonColors()
-                }
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = if (isListening) {
+                        MaterialTheme.colorScheme.errorContainer
+                    } else {
+                        micGrey
+                    },
+                    contentColor = if (isListening) {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    } else {
+                        softWhite
+                    }
+                )
             ) {
                 Icon(
                     imageVector = if (isListening)
@@ -1304,7 +2014,6 @@ fun ChatInputArea(
                         "Start listening"
                 )
             }
-        }
         }
     }
 }
