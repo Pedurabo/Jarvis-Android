@@ -4,7 +4,7 @@
 
 Jarvis is a native Android assistant designed to make everyday life and travel across Kampala and Uganda easier. It brings natural-language conversation together with source-aware place discovery, contextual navigation, and user-controlled actions. The long-term audience includes residents, tourists, expatriates, international students, business travellers, and newcomers.
 
-> **Status — 26 October 2026:** Active experimental prototype, **not production-ready**. The GitHub repository and the separately developed/tested local Android workspace may be at different checkpoints. Features in the roadmap below are **planned**, not delivered.
+> **Status — 31 October 2026:** Active experimental prototype, **not production-ready**. The GitHub repository and the separately developed/tested local Android workspace may be at different checkpoints. Features in the roadmap below are **planned**, not delivered.
 
 ## Product vision
 
@@ -35,6 +35,17 @@ Two connected experiences will share a single discovery foundation:
 - Supported source-grounded Kampala knowledge queries.
 
 **Limit:** The current directory is small. A returned listing is not proof of current opening hours, comprehensive coverage, live stock or authoritative address verification.
+
+### Separate Uganda geographic API
+
+The independently maintained [Jarvis Uganda Geographic Service](https://github.com/Pedurabo/jarvis-uganda-geo-service) now contains a Node.js/Express metropolitan discovery API mounted in its server source under `/geo/v2`:
+
+- `GET /geo/v2/resolve` — resolve a named locality, with district/division context and explicit OSM-identity selection when needed.
+- `GET /geo/v2/locality-search` — search a category around a resolved locality using an approximate point-radius method.
+- `GET /geo/v2/area-search` — search a district or Kampala division.
+- `GET /geo/v2/categories` — list categories present in the static snapshot.
+
+This is a **separate backend repository and API**. Its presence does not mean the Android app is already integrated with every endpoint. Client integration and end-to-end device verification remain separate work. The API uses static OpenStreetMap-derived records: a mapped listing is not proof of current business operation, opening hours, availability or official administrative status.
 
 ### Navigation and Maps handoff
 
@@ -81,6 +92,8 @@ Listings will use **verifiable self-described services**, not inferred ethnicity
 ## Architecture and technology
 
 **Current stack:** Kotlin · Android SDK · Jetpack Compose · Room · Hilt · Coroutines · Gradle · Retrofit/OkHttp · local AI inference · Gemma Companion IPC · JVM unit tests.
+
+**Separate geography-service stack:** Node.js 22 · Express 4 · static JSON snapshots · OpenStreetMap-derived locality and service records. This backend is developed and versioned independently from the Android client.
 
 **Next architectural milestone — CDI.6.0-A6.9:** Consolidate the existing directory, published-place policies and navigation context into a reusable **place/service resolver** with a structured place model, multiple sources, location/coverage metadata, ambiguity handling, provenance, and optional map handoff. Map/provider integrations and new data coverage will follow incrementally; they are **not yet a comprehensive live directory**.
 
