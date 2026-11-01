@@ -51,7 +51,7 @@ The Android source includes an experimental `KampalaExplicitGeoDiscovery` flow a
 - Each card provides a user-controlled Google Maps destination action and an OpenStreetMap source link.
 - Pharmacy discovery, card presentation and Google Maps handoff were manually checked on a Samsung Android 13 device on 2 November 2026.
 - Listings remain provider-supplied and unverified; location accuracy, source freshness and geographic coverage are limited.
-- Distance-based ordering and approximate distance labels are planned, not yet implemented.
+- Distance-based ordering of the provider-returned page is implemented and compiles locally; physical-device verification is pending. Approximate distance labels are not yet implemented.
 ### Node.js geographic backend in this repository
 
 The repository includes an experimental Node.js/Express backend under `backend/`. Its geographic router is mounted at `/geo` and exposes:
@@ -150,7 +150,7 @@ Never commit local SDK paths, credentials, `.env`, `google-services.json`, model
 
 1. Resolve the outstanding Android JVM test failures without weakening geographic safety and routing assertions.
 2. Verify the geographic API deployment, snapshot configuration, endpoint contract and category coverage end to end.
-3. Extend the verified nearby-search experience with approximate distance ordering and distance labels, while preserving source provenance and explicit user-controlled map handoff.
+3. Verify compiled nearby distance ordering on a physical device, then add approximate distance labels and review pagination before making nearest-place claims.
 4. Consolidate directory, published-place and geographic discovery behind a reusable evidence-aware place/service resolver.
 5. Expand credible map-provider and official-source discovery with coverage, freshness and branch-disambiguation indicators.
 6. Extend institutional, accommodation, telecom, tourism, everyday-life and opt-in language/community services.
@@ -159,3 +159,16 @@ Never commit local SDK paths, credentials, `.env`, `google-services.json`, model
 ---
 
 **Active research and development. Jarvis is not a released, fully verified or production-ready Uganda city assistant.**
+
+## Milestone 3C - Nearby distance ranking
+
+**Status: Completed - Samsung device verified (2 November 2026).**
+
+- Nearby geographic discovery requests up to 50 provider records.
+- Validated returned records are ranked by straight-line distance from a fresh, permission-authorized foreground location fix.
+- The interface displays up to 10 returned listings with approximate distance labels.
+- Native cards provide Google Maps and OpenStreetMap source actions.
+- The displayed/returned count is shown explicitly; Samsung verification confirmed **10 of 24 returned map listings**.
+- Ranking applies only to the provider-returned results within the requested search bounds; it is not a claim of globally exhaustive coverage.
+- Kotlin compilation, nearby-distance tests, and geographic-card parser tests passed.
+- Device verification: Samsung SM-G981U, Android 13.

@@ -362,6 +362,21 @@ class AssistantController @Inject internal constructor(
                         latitude = fix.latitude,
                         longitude = fix.longitude
                     )
+                    // JARVIS-NEARBY-DISTANCE-SORT-V2
+                    // Sort only the validated provider-returned page.
+                    val sortedResult = if (
+                        result is com.example.jarvis.core.network.KampalaGeoDiscoveryContract.Result.Success
+                    ) {
+                        result.copy(
+                            page = com.example.jarvis.core.network.KampalaNearbyDistanceSorter.sort(
+                                result.page,
+                                fix.latitude,
+                                fix.longitude
+                            )
+                        )
+                    } else {
+                        result
+                    }
                     nearbyHasListings =
                         result is com.example.jarvis.core.network.KampalaGeoDiscoveryContract.Result.Success &&
                             result.page.places.isNotEmpty()
@@ -373,7 +388,14 @@ class AssistantController @Inject internal constructor(
                         "$accuracy Search area is approximately 4.4 km north/south " +
                         "and a similar distance east/west. Listings may be incomplete.\n\n" +
                         com.example.jarvis.core.network.KampalaGeoDiscoveryPresentation
-                            .format(result, nearbyRequest.category)
+                            .format(
+                                sortedResult,
+                                nearbyRequest.category,
+                                com.example.jarvis.core.network.KampalaGeoDiscoveryContract.Coordinates(
+                                    fix.latitude,
+                                    fix.longitude
+                                )
+                            )
                 }
             }
 

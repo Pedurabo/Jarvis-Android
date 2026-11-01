@@ -27,7 +27,8 @@ internal object KampalaGeoDiscoveryPresentation {
 
     fun format(
         result: KampalaGeoDiscoveryContract.Result,
-        category: String
+        category: String,
+        nearbyOrigin: KampalaGeoDiscoveryContract.Coordinates? = null
     ): String {
         val safeCategory = safeText(category, 80)
             .ifBlank { "places" }
@@ -60,6 +61,10 @@ internal object KampalaGeoDiscoveryPresentation {
                     buildString {
                         appendLine("Geographic place discovery")
                         appendLine("Provider: $provider")
+                        appendLine(
+                            "Displayed ${minOf(page.places.size, MAX_DISPLAYED_PLACES)} " +
+                                "of ${page.places.size} returned map listings"
+                        )
                         appendLine()
 
                         page.places
@@ -74,6 +79,24 @@ internal object KampalaGeoDiscoveryPresentation {
                                     "Category: " +
                                         safeText(place.category, 80)
                                 )
+
+                                // JARVIS-NEARBY-DISTANCE-LABEL-V1
+                                if (nearbyOrigin != null) {
+                                    val meters = KampalaNearbyDistanceSorter.distanceMeters(
+                                        nearbyOrigin.latitude,
+                                        nearbyOrigin.longitude,
+                                        place.coordinates.latitude,
+                                        place.coordinates.longitude
+                                    )
+
+                                    val label = if (meters < 1000.0) {
+                                        "${meters.toInt()} m"
+                                    } else {
+                                        String.format(Locale.US, "%.1f km", meters / 1000.0)
+                                    }
+
+                                    appendLine("Approx. straight-line distance: $label")
+                                }
 
                                 val area = place.area
                                     ?.let { safeText(it, 120) }

@@ -26,14 +26,17 @@ internal object JarvisGeoResultCardsModel {
         val name: String,
         val category: String,
         val coordinates: String,
-        val sourceUrl: String
+        val sourceUrl: String,
+        val distanceLabel: String? = null
     )
 
     data class Result(
         val area: String,
         val provider: String,
         val places: List<Place>,
-        val disclaimer: String
+        val disclaimer: String,
+        val displayedCount: Int? = null,
+        val returnedCount: Int? = null
     )
 
     private val itemStart = Regex(
@@ -42,6 +45,10 @@ internal object JarvisGeoResultCardsModel {
 
     private val categoryPattern = Regex(
         """(?m)^Category:\s*([^\r\n]+)"""
+    )
+
+    private val distancePattern = Regex(
+        """(?m)^Approx\. straight-line distance:\s*(\d+(?:\.\d+)?\s*(?:m|km))\s*$"""
     )
 
     private val coordinatePattern = Regex(
@@ -207,6 +214,13 @@ internal object JarvisGeoResultCardsModel {
             val coordinates = coordinatePattern.find(section)
                 ?.groupValues?.get(1)?.trim()
                 ?: return null
+            val distanceLabel = if (isNearbySearch) {
+                distancePattern.find(section)
+                    ?.groupValues?.get(1)?.trim()
+            } else {
+                null
+            }
+
             val source = sourcePattern.find(section)
                 ?.groupValues?.get(1)
                 ?: return null
@@ -247,13 +261,28 @@ internal object JarvisGeoResultCardsModel {
                 name = name,
                 category = category,
                 coordinates = coordinates,
-                sourceUrl = source
+                sourceUrl = source,
+                distanceLabel = distanceLabel
             )
         }
 
         if (places.map { it.sourceUrl }.distinct().size != places.size) {
             return null
         }
+
+        val counts = Regex(
+            """(?m)^Displayed (\d+) of (\d+) returned map listings\r?$"""
+        ).find(text)
+
+        val displayedCount = counts?.groupValues?.get(1)?.toIntOrNull()
+        val returnedCount = counts?.groupValues?.get(2)?.toIntOrNull()
+
+        if (counts != null && (
+                displayedCount != places.size ||
+                returnedCount == null ||
+                returnedCount < displayedCount
+            )
+        ) return null
 
         val disclaimer = text.substringAfter(
             "These are map-provider listings,",
@@ -271,7 +300,9 @@ internal object JarvisGeoResultCardsModel {
             area = area,
             provider = provider,
             places = places,
-            disclaimer = disclaimer.take(500)
+            disclaimer = disclaimer.take(500),
+            displayedCount = displayedCount,
+            returnedCount = returnedCount
         )
     }
 }
@@ -287,12 +318,12 @@ internal fun JarvisGeoResultCards(
         androidx.compose.runtime.mutableStateMapOf<String, Boolean>()
     }
 
-    val countText = remember(result.provider) {
-        Regex("""showing \d+ of \d+ map listings""")
-            .find(result.provider)
-            ?.value
-            ?.removePrefix("showing ")
-            ?: "Mapped listings"
+    val countText = remember(result) {
+        if (result.displayedCount != null && result.returnedCount != null) {
+            "${result.displayedCount} of ${result.returnedCount} returned map listings"
+        } else {
+            "${result.places.size} map listings displayed"
+        }
     }
 
     Column(
@@ -368,6 +399,14 @@ internal fun JarvisGeoResultCards(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+
+                        if (place.distanceLabel != null) {
+                            Text(
+                                text = "Approx. ${place.distanceLabel} away (straight line)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     Row(

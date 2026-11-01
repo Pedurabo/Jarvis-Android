@@ -1,4 +1,4 @@
-﻿package com.example.jarvis.core.network
+package com.example.jarvis.core.network
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -59,7 +59,7 @@ internal class KampalaExplicitGeoDiscovery(
             query = null,
             category = category,
             bounds = bounds,
-            pageSize = 10,
+            pageSize = 50,
             pageToken = null
         )
 
