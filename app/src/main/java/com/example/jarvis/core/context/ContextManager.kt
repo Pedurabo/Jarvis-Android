@@ -35,6 +35,38 @@ class ContextManager @Inject constructor(
         )
     }
 
+    /**
+     * Gets a fresh foreground location fix for an explicit nearby search.
+     * This does not change the assistant's existing context-location behavior.
+     */
+    suspend fun getForegroundLocationFix(): android.location.Location? {
+        val hasCoarse = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasFine = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasCoarse && !hasFine) return null
+
+        return try {
+            val location = fusedLocationClient.getCurrentLocation(
+                Priority.PRIORITY_BALANCED_POWER_ACCURACY, null
+            ).await() ?: return null
+            val latitude = location.latitude
+            val longitude = location.longitude
+            val ageMs = System.currentTimeMillis() - location.time
+            if (!latitude.isFinite() || !longitude.isFinite() ||
+                latitude !in -90.0..90.0 || longitude !in -180.0..180.0 ||
+                ageMs < 0L || ageMs > 120_000L
+            ) return null
+            location
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private suspend fun getLastLocation(): LocationInfo? {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             return null

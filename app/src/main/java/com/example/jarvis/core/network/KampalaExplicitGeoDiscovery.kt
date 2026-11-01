@@ -1,4 +1,4 @@
-package com.example.jarvis.core.network
+﻿package com.example.jarvis.core.network
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -40,7 +40,83 @@ internal class KampalaExplicitGeoDiscovery(
             )
     }
 
+    /**
+     * Searches a bounded area around a fresh foreground location fix.
+     * The caller is responsible for obtaining consent and validating the fix.
+     * This method never accesses device location itself.
+     */
+    internal suspend fun searchNearby(
+        category: String,
+        latitude: Double,
+        longitude: Double
+    ): KampalaGeoDiscoveryContract.Result {
+        val bounds = nearbyBoundsOrNull(latitude, longitude)
+            ?: return KampalaGeoDiscoveryContract.Result.Unavailable(
+                "The current location could not define a valid nearby search area."
+            )
+
+        val request = KampalaGeoDiscoveryContract.SearchRequest(
+            query = null,
+            category = category,
+            bounds = bounds,
+            pageSize = 10,
+            pageToken = null
+        )
+
+        if (!KampalaGeoDiscoveryContract.validRequest(request)) {
+            return KampalaGeoDiscoveryContract.Result.Unavailable(
+                "The nearby search request was invalid."
+            )
+        }
+
+        return try {
+            KampalaGeoDiscoveryContract.validate(
+                request,
+                provider.search(request)
+            )
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            KampalaGeoDiscoveryContract.Result.Unavailable(
+                "The geographic provider could not complete the nearby search."
+            )
+        }
+    }
+
     companion object {
+
+        /**
+         * Approximately 4.4 km north/south, with longitude adjusted
+         * for latitude. Each dimension stays within provider limits.
+         */
+        internal fun nearbyBoundsOrNull(
+            latitude: Double,
+            longitude: Double
+        ): KampalaGeoDiscoveryContract.Bounds? {
+            val center = KampalaGeoDiscoveryContract.Coordinates(
+                latitude, longitude
+            )
+            if (!KampalaGeoDiscoveryContract.validCoordinates(center)) {
+                return null
+            }
+
+            val latitudeSpan = 0.04
+            val cosine = kotlin.math.cos(Math.toRadians(latitude))
+            if (!cosine.isFinite() || cosine <= 0.0) return null
+            val longitudeSpan = minOf(0.05, latitudeSpan / cosine)
+
+            val bounds = KampalaGeoDiscoveryContract.Bounds(
+                south = maxOf(-90.0, latitude - latitudeSpan),
+                west = maxOf(-180.0, longitude - longitudeSpan),
+                north = minOf(90.0, latitude + latitudeSpan),
+                east = minOf(180.0, longitude + longitudeSpan)
+            )
+            return if (KampalaGeoDiscoveryContract.validBounds(bounds)) {
+                bounds
+            } else {
+                null
+            }
+        }
 
         /**
          * Development-only geographic area, not device GPS.
@@ -96,8 +172,8 @@ internal class KampalaExplicitGeoDiscovery(
                 "bars" to "bar",
                 "cafe" to "cafe",
                 "cafes" to "cafe",
-                "café" to "cafe",
-                "cafés" to "cafe",
+                "cafÃ©" to "cafe",
+                "cafÃ©s" to "cafe",
                 "convenience shop" to "convenience_shop",
                 "convenience shops" to "convenience_shop",
                 "convenience store" to "convenience_shop",
@@ -258,8 +334,8 @@ fun createOverpass(): KampalaExplicitGeoDiscovery =
             "bars" to "bar",
             "cafe" to "cafe",
             "cafes" to "cafe",
-            "café" to "cafe",
-            "cafés" to "cafe",
+            "cafÃ©" to "cafe",
+            "cafÃ©s" to "cafe",
             "convenience shop" to "convenience_shop",
             "convenience shops" to "convenience_shop",
             "convenience store" to "convenience_shop",
@@ -732,8 +808,8 @@ fun createOverpass(): KampalaExplicitGeoDiscovery =
             "bars",
             "cafe",
             "cafes",
-            "café",
-            "cafés",
+            "cafÃ©",
+            "cafÃ©s",
             "convenience shop",
             "convenience shops",
             "convenience store",
@@ -854,7 +930,7 @@ fun createOverpass(): KampalaExplicitGeoDiscovery =
                 "hotel", "hospital", "clinic", "school", "academy",
                 "university", "college", "bank", "pharmacy", "embassy",
                 "church", "mosque", "cathedral", "restaurant", "cafe",
-                "café", "supermarket", "market", "museum", "stadium",
+                "cafÃ©", "supermarket", "market", "museum", "stadium",
                 "tower", "plaza", "centre", "center", "mall", "park",
                 "lodge", "hostel", "motel", "bar", "pub", "nightclub",
                 "attraction"
@@ -1065,7 +1141,7 @@ fun createOverpass(): KampalaExplicitGeoDiscovery =
             "restaurants" to "restaurant",
             "cafe" to "cafe",
             "cafes" to "cafe",
-            "cafés" to "cafe",
+            "cafÃ©s" to "cafe",
             "hotel" to "hotel",
             "hotels" to "hotel",
             "hospital" to "hospital",
@@ -1255,7 +1331,7 @@ fun createOverpass(): KampalaExplicitGeoDiscovery =
                                     ).distinct()
 
                                     if (context.isNotEmpty()) {
-                                        append(" — ")
+                                        append(" â€” ")
                                         append(context.joinToString(", "))
                                     }
 
@@ -1482,6 +1558,12 @@ fun createOverpass(): KampalaExplicitGeoDiscovery =
         }.trim()
     }
 suspend fun answerOrNull(message: String): String? {
+        // P2-C fail-closed boundary: nearby requests must be handled
+        // by AssistantController's foreground-permission flow.
+        // Never reinterpret them as named-locality snapshot searches.
+        if (KampalaNearbyIntentResolver.parseOrNull(message) != null) {
+            return "Nearby discovery requires the foreground location permission flow. No locality snapshot search was performed. Please submit the nearby request through Jarvis chat."
+        }
         val normalized = message
             .trim()
             .lowercase(java.util.Locale.ROOT)
@@ -1575,8 +1657,8 @@ suspend fun answerOrNull(message: String): String? {
                 "bars",
                 "cafe",
                 "cafes",
-                "café",
-                "cafés",
+                "cafÃ©",
+                "cafÃ©s",
                 "convenience shop",
                 "convenience shops",
                 "convenience store",

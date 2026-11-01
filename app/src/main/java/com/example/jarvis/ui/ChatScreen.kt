@@ -1,9 +1,16 @@
 package com.example.jarvis.ui
 
+import android.Manifest
+import android.widget.Toast
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.material.icons.filled.MoreVert
 
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.SpanStyle
@@ -56,7 +63,63 @@ fun ChatScreen(
     viewModel: JarvisViewModel = hiltViewModel(),
     modelSelector: @Composable () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+    val pendingNearbyPermission by viewModel.pendingNearbyPermission.collectAsState()
+    // Keep the system permission prompt serialized. If a newer nearby request
+    // arrives while a prompt is open, its ID remains pending until this callback
+    // completes; the old callback is delivered with the ID that launched it.
+    var activeNearbyPermissionRequestId by remember { mutableStateOf<Long?>(null) }
+
+    val nearbyPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val completedRequestId = activeNearbyPermissionRequestId
+        activeNearbyPermissionRequestId = null
+        if (completedRequestId != null) {
+            val granted =
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
+                    permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+            viewModel.onNearbyPermissionResult(completedRequestId, granted)
+        }
+    }
+
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.toggleListening()
+        } else {
+            Toast.makeText(
+                context,
+                "Microphone permission is required for voice input.",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+    LaunchedEffect(pendingNearbyPermission?.requestId, activeNearbyPermissionRequestId) {
+        val request = pendingNearbyPermission ?: return@LaunchedEffect
+        if (activeNearbyPermissionRequestId != null) return@LaunchedEffect
+
+        val hasCoarse = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasFine = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasCoarse || hasFine) {
+            viewModel.onNearbyPermissionResult(request.requestId, true)
+        } else {
+            activeNearbyPermissionRequestId = request.requestId
+            nearbyPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                )
+            )
+        }
+    }
     val pendingAction by viewModel.pendingToolAction.collectAsState()
     val isListening by viewModel.isListening.collectAsState()
     val isModelReady by viewModel.isModelReady.collectAsState()
@@ -187,7 +250,20 @@ fun ChatScreen(
                     onTextChanged = { viewModel.onTextChanged(it) },
                     onSendClicked = { viewModel.sendTextMessage() },
                     isListening = isListening,
-                    onMicClicked = { viewModel.toggleListening() },
+                    onMicClicked = {
+                        if (isListening ||
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.RECORD_AUDIO
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            viewModel.toggleListening()
+                        } else {
+                            microphonePermissionLauncher.launch(
+                                Manifest.permission.RECORD_AUDIO
+                            )
+                        }
+                    },
                     enabled = isModelReady && llmError == null
                 )
             }

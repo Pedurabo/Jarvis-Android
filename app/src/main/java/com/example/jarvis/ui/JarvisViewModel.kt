@@ -6,6 +6,8 @@ import com.example.jarvis.core.ai.AssistantController
 import com.example.jarvis.core.ai.ConfidenceLevel
 import com.example.jarvis.core.ai.ConversationRepository
 import com.example.jarvis.core.chat.LocalChatRepository
+import com.example.jarvis.core.context.ContextManager
+import com.example.jarvis.core.network.KampalaNearbyIntentResolver
 import android.util.Log
 import com.example.jarvis.core.ai.LLMManager
 import com.example.jarvis.core.voice.VoiceManager
@@ -27,7 +29,8 @@ class JarvisViewModel @Inject constructor(
     private val skillRegistry: SkillRegistry,
     private val conversationRepository: ConversationRepository,
     private val localChatRepository: LocalChatRepository,
-    private val assistantController: AssistantController
+    private val assistantController: AssistantController,
+    private val contextManager: ContextManager
 ) : ViewModel() {
 
     private val historyReady = CompletableDeferred<Unit>()
@@ -35,6 +38,10 @@ class JarvisViewModel @Inject constructor(
     // CDI.5.54-A: Cancel outstanding responses before deleting history.
     private val activeRequestJobs = mutableSetOf<Job>()
     private var clearingChat = false
+    private var nearbyRequestSequence = 0L
+    private val _pendingNearbyPermission = MutableStateFlow<NearbyPermissionRequest?>(null)
+    val pendingNearbyPermission: StateFlow<NearbyPermissionRequest?> =
+        _pendingNearbyPermission.asStateFlow()
     private val _uiState = MutableStateFlow(JarvisUiState())
     val uiState: StateFlow<JarvisUiState> = _uiState.asStateFlow()
     val pendingToolAction = skillRegistry.pendingToolAction
@@ -127,7 +134,7 @@ class JarvisViewModel @Inject constructor(
         viewModelScope.launch {
             voiceManager.transcribedText.collect { text ->
                 if (text.isNotEmpty() && !voiceManager.isListening.value) {
-                    processCommand(text)
+                    submitCommand(text)
                 }
             }
         }
@@ -159,11 +166,44 @@ class JarvisViewModel @Inject constructor(
                 voiceManager.stopSpeaking()
             }
             _uiState.value = _uiState.value.copy(currentInputText = "")
-            processCommand(text)
+            submitCommand(text)
         }
     }
 
-    private fun processCommand(command: String) {
+    /**
+     * Common entry point for typed and transcribed commands. Nearby
+     * permission is requested only after an explicit nearby intent.
+     */
+    private fun submitCommand(command: String) {
+        if (clearingChat) return
+        if (KampalaNearbyIntentResolver.parseOrNull(command) != null) {
+            nearbyRequestSequence += 1L
+            _pendingNearbyPermission.value = NearbyPermissionRequest(
+                requestId = nearbyRequestSequence,
+                command = command
+            )
+            return
+        }
+        _pendingNearbyPermission.value = null
+        processCommand(command)
+    }
+
+    /** Called by ChatScreen after the explicit permission prompt completes. */
+    fun onNearbyPermissionResult(requestId: Long, granted: Boolean) {
+        val pending = _pendingNearbyPermission.value ?: return
+        if (clearingChat || pending.requestId != requestId) return
+
+        _pendingNearbyPermission.value = null
+        processCommand(
+            command = pending.command,
+            nearbyPermissionGranted = granted
+        )
+    }
+
+    private fun processCommand(
+        command: String,
+        nearbyPermissionGranted: Boolean? = null
+    ) {
         if (clearingChat) return
         _uiState.value = JarvisMessageReducer.started(_uiState.value, command)
         val userMessage = _uiState.value.messages.last()
@@ -172,9 +212,19 @@ class JarvisViewModel @Inject constructor(
             try {
                 historyReady.await()
                 saveLocalMessage(userMessage)
-                val assistantResponse = assistantController.onUserQuery(command) { status ->
-                    _uiState.value = _uiState.value.copy(processingStatus = status)
+                val nearbyLocation = if (nearbyPermissionGranted == true) {
+                    contextManager.getForegroundLocationFix()
+                } else {
+                    null
                 }
+                val assistantResponse = assistantController.onUserQuery(
+                    query = command,
+                    onUpdate = { status ->
+                        _uiState.value = _uiState.value.copy(processingStatus = status)
+                    },
+                    nearbyLocation = nearbyLocation,
+                    nearbyPermissionGranted = nearbyPermissionGranted == true
+                )
 
                 if (ApprovalMessagePolicy.isPendingNotice(assistantResponse.text)) {
                     // Pending action is represented by the confirmation dialog.
@@ -235,6 +285,9 @@ class JarvisViewModel @Inject constructor(
         if (clearingChat) return
 
         clearingChat = true
+        // Invalidate any system permission result still in flight.
+        nearbyRequestSequence += 1L
+        _pendingNearbyPermission.value = null
         _uiState.value = _uiState.value.copy(
             isClearingChat = true,
             clearChatError = null
@@ -314,6 +367,11 @@ enum class MessageOrigin {
     KNOWLEDGE_NOTICE,
     CURATED_FACT
 }
+
+data class NearbyPermissionRequest(
+    val requestId: Long,
+    val command: String
+)
 
 data class Message(
     val text: String,

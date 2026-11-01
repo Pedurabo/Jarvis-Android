@@ -174,7 +174,12 @@ class AssistantController @Inject internal constructor(
         data class Error(val message: String) : AssistantEvent()
     }
 
-    suspend fun onUserQuery(query: String, onUpdate: (String) -> Unit): AssistantResponse = coroutineScope {
+    suspend fun onUserQuery(
+        query: String,
+        onUpdate: (String) -> Unit,
+        nearbyLocation: android.location.Location? = null,
+        nearbyPermissionGranted: Boolean = false
+    ): AssistantResponse = coroutineScope {
         val startTime = System.currentTimeMillis()
 
         // Capture existing pending navigation context without
@@ -326,6 +331,74 @@ class AssistantController @Inject internal constructor(
 
             return@coroutineScope emergencyResponse
         }
+
+        // P2-C: Explicit nearby requests are handled only after emergency
+        // policies and before navigation, geographic or generative routes.
+        // The ViewModel supplies a foreground fix only after UI consent.
+        val nearbyRequest =
+            com.example.jarvis.core.network.KampalaNearbyIntentResolver
+                .parseOrNull(query)
+
+        if (nearbyRequest != null) {
+            onUpdate("Checking nearby map listings...")
+            resetNavigationContext()
+
+            val fix = nearbyLocation
+            var nearbyHasListings = false
+            val nearbyText = when {
+                !nearbyPermissionGranted ->
+                    "I did not receive permission to access your location. " +
+                        "No nearby search was performed. You can try again " +
+                        "and allow approximate location, or search by naming an area."
+
+                fix == null ->
+                    "I couldn't obtain a fresh location fix, so I haven't " +
+                        "searched or assumed where you are. Check that device " +
+                        "location is enabled and try again, or name an area."
+
+                else -> {
+                    val result = explicitGeoDiscovery.searchNearby(
+                        category = nearbyRequest.category,
+                        latitude = fix.latitude,
+                        longitude = fix.longitude
+                    )
+                    nearbyHasListings =
+                        result is com.example.jarvis.core.network.KampalaGeoDiscoveryContract.Result.Success &&
+                            result.page.places.isNotEmpty()
+                    val accuracy = fix.accuracy
+                        .takeIf { it.isFinite() && it >= 0f }
+                        ?.let { "Android reports location accuracy of about ${it.toInt()} m." }
+                        ?: "Android did not report location accuracy."
+                    "Nearby search centred on your device's current location. " +
+                        "$accuracy Search area is approximately 4.4 km north/south " +
+                        "and a similar distance east/west. Listings may be incomplete.\n\n" +
+                        com.example.jarvis.core.network.KampalaGeoDiscoveryPresentation
+                            .format(result, nearbyRequest.category)
+                }
+            }
+
+            val origin = if (nearbyHasListings) {
+                ResponseOrigin.DIRECTORY_RESULT
+            } else {
+                ResponseOrigin.DIRECTORY_NOTICE
+            }
+            val response = AssistantResponse(
+                text = nearbyText,
+                voiceOptimizedText = nearbyText,
+                confidence = EvidenceConfidencePolicy.level(origin),
+                origin = origin,
+                metadata = ResponseMetadata(
+                    route = ModelRouter.Route.LOCAL,
+                    processingTimeMs = System.currentTimeMillis() - startTime,
+                    toolUsage = if (fix != null) 1 else 0,
+                    memoryUsage = 0
+                )
+            )
+            conversationRepository.saveMessage("user", query)
+            conversationRepository.saveMessage("assistant", nearbyText)
+            return@coroutineScope response
+        }
+
         // JARVIS-LANDMARK-CLARIFICATION-V1
         // A relative landmark is a clue, never a replacement
         // for the destination or an independently verified fact.
@@ -2690,11 +2763,6 @@ class AssistantController @Inject internal constructor(
         finalAnswerText = JarvisP2B7COutputPolicy.review(
             query, finalAnswerText
         )
-        if (toolUsageCount == 0) {
-            finalAnswerText = KampalaTrustedFactPolicy.review(
-                query, finalAnswerText
-            )
-        }
         val finalVoiceText = try {
             val candidate = responsePipeline.execute(
                 query, finalAnswerText, retrievedContext, currentRoute

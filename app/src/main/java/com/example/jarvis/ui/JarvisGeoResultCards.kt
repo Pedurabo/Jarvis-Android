@@ -156,7 +156,14 @@ internal object JarvisGeoResultCardsModel {
     fun parse(text: String): Result? {
         parseMetropolitan(text)?.let { return it }
 
-        if (!text.startsWith("Experimental map search: ")) {
+        val isNearbySearch = text.startsWith(
+            "Nearby search centred on your device's current location."
+        )
+
+        if (
+            !isNearbySearch &&
+            !text.startsWith("Experimental map search: ")
+        ) {
             return null
         }
 
@@ -164,9 +171,13 @@ internal object JarvisGeoResultCardsModel {
             return null
         }
 
-        val area = text.lineSequence().first()
-            .removePrefix("Experimental map search: ")
-            .trim()
+        val area = if (isNearbySearch) {
+            "your device location"
+        } else {
+            text.lineSequence().first()
+                .removePrefix("Experimental map search: ")
+                .trim()
+        }
 
         if (area.isBlank() || area.length > 100) return null
 
@@ -303,6 +314,29 @@ internal fun JarvisGeoResultCards(
         result.places.forEach { place ->
             val expanded = expandedSources[place.sourceUrl] == true
 
+            // JARVIS-GOOGLE-MAPS-CARD-ACTION-V1
+            // Use the geographic provider's coordinates.
+            // No route is calculated or started automatically.
+            val googleMapsUrl = remember(place.coordinates) {
+                val parts = place.coordinates.split(",")
+                val latitude = parts.getOrNull(0)?.trim()?.toDoubleOrNull()
+                val longitude = parts.getOrNull(1)?.trim()?.toDoubleOrNull()
+
+                if (
+                    latitude != null &&
+                    longitude != null &&
+                    latitude.isFinite() &&
+                    longitude.isFinite() &&
+                    latitude in -90.0..90.0 &&
+                    longitude in -180.0..180.0
+                ) {
+                    "https://www.google.com/maps/search/?api=1&query=" +
+                        "$latitude,$longitude"
+                } else {
+                    null
+                }
+            }
+
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -315,28 +349,43 @@ internal fun JarvisGeoResultCards(
                     ),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    // JARVIS-GEO-CARD-LAYOUT-V2
+                    // Full-width heading with a separate action row.
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "${place.number}. ${place.name}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Text(
+                            text = JarvisP2B8ListingPolicy.cardSubtitle(place.category),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                     ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                text = "${place.number}. ${place.name}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-
-                            Text(
-                                text = JarvisP2B8ListingPolicy.cardSubtitle(place.category),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        if (googleMapsUrl != null) {
+                            TextButton(
+                                modifier = Modifier.heightIn(min = 48.dp),
+                                onClick = {
+                                    runCatching {
+                                        uriHandler.openUri(googleMapsUrl)
+                                    }
+                                }
+                            ) {
+                                Text("Google Maps")
+                            }
                         }
 
                         TextButton(

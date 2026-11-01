@@ -4,7 +4,7 @@
 
 Jarvis is a native Android assistant intended to make everyday life and travel across Kampala and Uganda easier. It combines natural-language conversation with source-aware place discovery, contextual navigation and user-controlled actions. Its intended audience includes residents, tourists, expatriates, international students, business travellers and newcomers.
 
-> **Status — 31 October 2026:** Experimental prototype; **not production-ready**. The public `main` branch contains the Kampala geographic-discovery integration and supporting backend code described below. Some deployment, data, test and physical-device checks remain outstanding. Planned capabilities are identified as planned rather than presented as delivered.
+> **Status — 2 November 2026:** Experimental prototype; **not production-ready**. The public `main` branch contains the Kampala geographic-discovery integration and supporting backend code described below. Some deployment, data, test and physical-device checks remain outstanding. Planned capabilities are identified as planned rather than presented as delivered.
 
 ## Product vision
 
@@ -43,6 +43,15 @@ The Android source includes an experimental `KampalaExplicitGeoDiscovery` flow a
 
 **Geographic-boundary limitation:** Central Kampala uses a predefined approximate rectangle. The seven experimental area bounds are rectangles derived from third-party Uganda parish feature extents, not official KCCA-verified polygons. A rectangle can include places outside the underlying parish polygon. These bounds are not live GPS, official administrative boundaries or proof of full area coverage.
 
+### Foreground nearby discovery — device verified
+
+- Explicit nearby-category requests use Android location permission and a foreground location fix.
+- The existing geographic provider searches a bounded area around the device location.
+- Results appear as interactive cards with category labels, source provenance and expandable coordinates.
+- Each card provides a user-controlled Google Maps destination action and an OpenStreetMap source link.
+- Pharmacy discovery, card presentation and Google Maps handoff were manually checked on a Samsung Android 13 device on 2 November 2026.
+- Listings remain provider-supplied and unverified; location accuracy, source freshness and geographic coverage are limited.
+- Distance-based ordering and approximate distance labels are planned, not yet implemented.
 ### Node.js geographic backend in this repository
 
 The repository includes an experimental Node.js/Express backend under `backend/`. Its geographic router is mounted at `/geo` and exposes:
@@ -69,7 +78,7 @@ That service is distinct from the `/geo/search` router included in this reposito
 - Contextual journey handling can retain a destination while the user clarifies an origin.
 - Google Maps handoff is user-controlled. Google Maps—not Jarvis—resolves roads, directions, distances and travel times.
 
-**Limit:** The directory and geographic data are not comprehensive. A returned listing is not proof of current operation, opening hours, stock, availability or an authoritative address. The latest compact Maps action still requires its external-launch acceptance check on a physical device.
+**Limit:** The directory and geographic data are not comprehensive. A returned listing is not proof of current operation, opening hours, stock, availability or an authoritative address. The Google Maps destination handoff has been manually verified on a Samsung Android 13 device for a nearby pharmacy listing.
 
 ## Planned Kampala & Uganda discovery coverage
 
@@ -88,7 +97,7 @@ The target is broad, source-backed discovery across Kampala's five divisions, Gr
 | Tourism & transport | Airport transfers, ride services, vehicle hire, accredited guides, safari operators, parks and visitor attractions |
 | Faith & community | Places of worship, NGOs, nonprofits, public cultural associations and community resources |
 
-Future discovery should support category aliases, place aliases, area context, nearby requests with permission, source links, provider freshness and safe clarification where multiple branches match. Shopping, ride, food and accommodation integrations depend on actual provider support and user-approved handoffs.
+Future discovery should expand category aliases, place aliases, area context, nearby category coverage, source links, provider freshness and safe clarification where multiple branches match. Shopping, ride, food and accommodation integrations depend on actual provider support and user-approved handoffs.
 
 ### International-community and language-aware discovery (planned)
 
@@ -117,7 +126,7 @@ Listings must be based on verifiable, self-described services—not inferred eth
 - The latest reported local `:app:testDebugUnitTest` run completed **1,155 tests with 15 failures**. Failures include geographic command/provider routing, unsupported-area handling and fresh-journey ordering. These failures have not yet been resolved; this README does not claim that the full JVM suite is passing.
 - The latest reported Node route-test run could not complete because its required snapshot test path was missing. The importer and places-index test groups passed their reported checks, but that does not validate a configured live service.
 - A clean-checkout build of the current GitHub branch has not been independently established here.
-- The newest compact Google Maps action still needs its external-launch physical-device acceptance check.
+- Nearby pharmacy cards and Google Maps destination handoff passed the reported Samsung Android 13 manual checks; broader navigation and device regression testing remains outstanding.
 - Broad provider-backed GPS search, comprehensive geographic coverage, official boundary verification, robust multi-branch resolution, provider freshness, persistent journey state, hotel/ride booking, real-time shopping/pricing, tourism reservations and community directories remain incomplete or planned.
 
 A successful compilation alone does not establish correct provider responses, hosted backend availability, external Maps launch or complete physical-device behaviour.
@@ -141,7 +150,7 @@ Never commit local SDK paths, credentials, `.env`, `google-services.json`, model
 
 1. Resolve the outstanding Android JVM test failures without weakening geographic safety and routing assertions.
 2. Verify the geographic API deployment, snapshot configuration, endpoint contract and category coverage end to end.
-3. Verify the latest compact Maps action launches the intended external journey on a physical device.
+3. Extend the verified nearby-search experience with approximate distance ordering and distance labels, while preserving source provenance and explicit user-controlled map handoff.
 4. Consolidate directory, published-place and geographic discovery behind a reusable evidence-aware place/service resolver.
 5. Expand credible map-provider and official-source discovery with coverage, freshness and branch-disambiguation indicators.
 6. Extend institutional, accommodation, telecom, tourism, everyday-life and opt-in language/community services.
