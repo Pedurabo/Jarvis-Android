@@ -2,8 +2,8 @@ package com.example.jarvis.core.network
 
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.Buffer
@@ -43,62 +43,97 @@ internal class KampalaJarvisGeoApiProvider(
             .followRedirects(false)
             .build()
 
-        override suspend fun get(
-            url: String
-        ): HttpResult = withContext(Dispatchers.IO) {
+        override suspend fun get(url: String): HttpResult =
+            kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
 
-            val request = Request.Builder()
-                .url(url)
-                .header("Accept", "application/json")
-                .build()
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Accept", "application/json")
+                    .build()
 
-            client.newCall(request).execute().use { response ->
+                val call = client.newCall(request)
 
-                val body = response.body
-                    ?: return@withContext HttpResult(
-                        response.code,
-                        ""
-                    )
-
-                val buffer = Buffer()
-                val source = body.source()
-
-                val maxBytes = 256L * 1024L
-                var total = 0L
-
-                while (true) {
-                    val remaining = maxBytes + 1L - total
-
-                    if (remaining <= 0L) {
-                        throw IllegalStateException(
-                            "Geographic response exceeded size limit"
-                        )
-                    }
-
-                    val count = source.read(
-                        buffer,
-                        minOf(8192L, remaining)
-                    )
-
-                    if (count == -1L) break
-
-                    total += count
-
-                    if (total > maxBytes) {
-                        throw IllegalStateException(
-                            "Geographic response exceeded size limit"
-                        )
-                    }
+                continuation.invokeOnCancellation {
+                    call.cancel()
                 }
 
-                HttpResult(
-                    response.code,
-                    buffer.readUtf8()
-                )
-            }
-        }
-    }
+                call.enqueue(object : okhttp3.Callback {
+                    override fun onFailure(
+                        call: okhttp3.Call,
+                        e: java.io.IOException
+                    ) {
+                        if (continuation.isActive) {
+                            continuation.resumeWithException(e)
+                        }
+                    }
 
+                    override fun onResponse(
+                        call: okhttp3.Call,
+                        response: okhttp3.Response
+                    ) {
+                        try {
+                            response.use {
+                                val body = it.body
+                                if (body == null) {
+                                    if (continuation.isActive) {
+                                        continuation.resume(
+                                            HttpResult(it.code, "")
+                                        )
+                                    }
+                                    return
+                                }
+
+                                val buffer = Buffer()
+                                val source = body.source()
+                                val maxBytes = 256L * 1024L
+                                var total = 0L
+
+                                while (true) {
+                                    if (!continuation.isActive) {
+                                        call.cancel()
+                                        return
+                                    }
+
+                                    val remaining = maxBytes + 1L - total
+                                    if (remaining <= 0L) {
+                                        throw IllegalStateException(
+                                            "Geographic response exceeded size limit"
+                                        )
+                                    }
+
+                                    val count = source.read(
+                                        buffer,
+                                        minOf(8192L, remaining)
+                                    )
+
+                                    if (count == -1L) break
+
+                                    total += count
+                                    if (total > maxBytes) {
+                                        throw IllegalStateException(
+                                            "Geographic response exceeded size limit"
+                                        )
+                                    }
+                                }
+
+                                if (continuation.isActive) {
+                                    continuation.resume(
+                                        HttpResult(
+                                            it.code,
+                                            buffer.readUtf8()
+                                        )
+                                    )
+                                }
+                            }
+                        } catch (e: Exception) {
+                            if (continuation.isActive) {
+                                continuation.resumeWithException(e)
+                            }
+                        }
+                    }
+                })
+            }
+    }
     private val endpoint = validateBaseUrl(baseUrl)
 
     companion object {
