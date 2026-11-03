@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "purpose": "P2-D2 pilot district geometry validation",
+  "attribution": "? OpenStreetMap contributors",
+  "license": "ODbL",
+  "districts": [
+    {
+      "name": "Soroti",
+      "identity": "relation/3497400",
+      "osmUrl": "https://www.openstreetmap.org/relation/3497400",
+      "geometrySource": "https://polygons.openstreetmap.fr/get_geojson.py?id=3497400&params=0",
+      "filename": "soroti.geojson",
+      "sha256": "25007203c27ffa63c855c8dd56d2fed9a40c9e20ef0d5251102a0c81601efb85",
+      "geometryType": "Polygon",
+      "catalogBoundsMatched": true,
+      "geometryStructureValid": true,
+      "independentProvenanceVerified": false,
+      "boundaryCurrentnessVerified": false,
+      "productionApproved": false
+    },
+    {
+      "name": "Gulu",
+      "identity": "relation/3497245",
+      "osmUrl": "https://www.openstreetmap.org/relation/3497245",
+      "geometrySource": "https://polygons.openstreetmap.fr/get_geojson.py?id=3497245&params=0",
+      "filename": "gulu.geojson",
+      "sha256": "9ef57579513bfa65822458ad08c316b9454c680e4b35292ec5fee2f4c201c1b2",
+      "geometryType": "MultiPolygon",
+      "catalogBoundsMatched": true,
+      "geometryStructureValid": true,
+      "independentProvenanceVerified": false,
+      "boundaryCurrentnessVerified": false,
+      "productionApproved": false
+    },
+    {
+      "name": "Mbale",
+      "identity": "relation/3498160",
+      "osmUrl": "https://www.openstreetmap.org/relation/3498160",
+      "geometrySource": "https://polygons.openstreetmap.fr/get_geojson.py?id=3498160&params=0",
+      "filename": "mbale.geojson",
+      "sha256": "3e2b298e75bfae54d062135c2959e14dab0e43504bf1572ae7772e277ea2e7aa",
+      "geometryType": "MultiPolygon",
+      "catalogBoundsMatched": true,
+      "geometryStructureValid": true,
+      "independentProvenanceVerified": false,
+      "boundaryCurrentnessVerified": false,
+      "productionApproved": false
+    },
+    {
+      "name": "Abim",
+      "identity": "relation/3497425",
+      "osmUrl": "https://www.openstreetmap.org/relation/3497425",
+      "geometrySource": "https://polygons.openstreetmap.fr/get_geojson.py?id=3497425&params=0",
+      "filename": "abim.geojson",
+      "sha256": "dfdc2f4f595357bb7e35e2c51dc00700aa59eab708482c7bd52b839b21f5811b",
+      "geometryType": "MultiPolygon",
+      "catalogBoundsMatched": true,
+      "geometryStructureValid": true,
+      "independentProvenanceVerified": false,
+      "boundaryCurrentnessVerified": false,
+      "productionApproved": false
+    }
+  ]
+}

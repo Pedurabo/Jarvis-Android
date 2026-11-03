@@ -1,4 +1,5 @@
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 const { OpenAI } = require('openai');
 const rateLimit = require('express-rate-limit');
@@ -6,6 +7,61 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 const app = express();
+
+// Unified Jarvis geographic service initialization.
+const geographicRoot = path.join(__dirname, "geographic-service");
+const geographicAreaDir = path.join(
+  geographicRoot,
+  "data",
+  "offline-import",
+  "area-resolution-v1"
+);
+
+process.env.JARVIS_GEO_SNAPSHOT =
+  process.env.JARVIS_GEO_SNAPSHOT ||
+  path.join(geographicRoot, "data", "uganda-places.snapshot.json");
+
+process.env.JARVIS_AREA_CATALOG =
+  process.env.JARVIS_AREA_CATALOG ||
+  path.join(geographicAreaDir, "uganda-area-catalog-v1.json");
+
+const nationalGeoRouter = require(
+  "./geographic-service/geo/uganda-geo-route"
+);
+
+const areaResolver = require(
+  "./geographic-service/geo/kampala-area-resolver"
+);
+
+const metropolitanLoader = require(
+  path.join(
+    geographicAreaDir,
+    "metropolitan-consolidated-search-v2.cjs"
+  )
+);
+
+const metropolitanEngine = metropolitanLoader.loadConsolidatedSearch(
+  path.join(
+    geographicAreaDir,
+    "greater-kampala-all-mapped-features-v2.json"
+  ),
+  path.join(
+    geographicAreaDir,
+    "metropolitan-boundary-recovery-index-v1.json"
+  ),
+  path.join(
+    geographicAreaDir,
+    "greater-kampala-services-index-v1.json"
+  ),
+  path.join(
+    geographicAreaDir,
+    "greater-kampala-search-engine-v3.cjs"
+  )
+);
+
+const metropolitanRouter = require(
+  path.join(geographicAreaDir, "metropolitan-api-v2-router.cjs")
+).createMetropolitanRouter(express, metropolitanEngine);
 const port = process.env.PORT || 3000;
 
 // 1. Security & Logging Middleware
@@ -76,7 +132,13 @@ app.post('/chat', async (req, res) => {
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'healthy' }));
 
-app.use("/geo", require("./geo/uganda-geo-route"));
+app.use(
+  "/",
+  require("./kampala/kampala-routes").createKampalaRouter(express)
+);
+app.use("/geo", areaResolver.router);
+app.use("/geo", nationalGeoRouter);
+app.use("/geo/v2", metropolitanRouter);
 app.listen(port, () => {
   console.log(`Jarvis Backend listening at http://localhost:${port}`);
 });
