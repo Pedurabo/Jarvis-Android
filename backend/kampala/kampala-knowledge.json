@@ -1,0 +1,30 @@
+{
+    "schemaVersion":  1,
+    "city":  "Kampala",
+    "country":  "Uganda",
+    "entries":  [
+                    {
+                        "id":  "kampala-history-overview",
+                        "topic":  "history",
+                        "city":  "Kampala",
+                        "country":  "Uganda",
+                        "title":  "Kampala History",
+                        "answer":  "Kampala is the capital of Uganda and has deep historical connections to the Kingdom of Buganda. Its modern urban development includes the establishment of a colonial fort at Old Kampala in 1890. Kampala subsequently grew as a centre of commerce and administration. It received city status on 28 September 1962, shortly before Uganda gained independence on 9 October 1962.",
+                        "reviewedAt":  "2026-10-16",
+                        "sources":  [
+                                        {
+                                            "publisher":  "Kampala Capital City Authority",
+                                            "url":  "https://www.kcca.go.ug/news/1198"
+                                        },
+                                        {
+                                            "publisher":  "Library of Congress",
+                                            "url":  "https://www.loc.gov/item/2021668576/"
+                                        },
+                                        {
+                                            "publisher":  "Office of the Vice President of Uganda",
+                                            "url":  "https://www.vicepresident.go.ug/history/"
+                                        }
+                                    ]
+                    }
+                ]
+}
