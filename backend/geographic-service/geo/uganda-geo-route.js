@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const express = require("express");
 const geo = require("./uganda-places-index");
@@ -417,4 +417,65 @@ router.get("/district-category-search", (req, res) => {
     return res.status(statusCode).json(result);
 });
 
+
+// JARVIS-P4.10-PROVISIONAL-DISTRICT-SEARCH
+const provisionalDistrictSearch =
+    require("./uganda-provisional-district-search");
+
+router.get("/provisional-district-search", (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.set("X-Content-Type-Options", "nosniff");
+
+    if (!index || !districtAreas) {
+        return res.status(503).json({
+            status: "UNAVAILABLE",
+            places: []
+        });
+    }
+
+    const rawLimit = req.query.limit;
+
+    if (
+        rawLimit !== undefined &&
+        (
+            typeof rawLimit !== "string" ||
+            !/^[1-9]\d*$/.test(rawLimit)
+        )
+    ) {
+        return res.status(400).json({
+            status: "INVALID_REQUEST",
+            places: []
+        });
+    }
+
+    const limit = rawLimit === undefined
+        ? 20
+        : Number(rawLimit);
+
+    try {
+        const result =
+            provisionalDistrictSearch.searchProvisional(
+                index,
+                districtAreas,
+                {
+                    district: req.query.district,
+                    category: req.query.category,
+                    limit
+                }
+            );
+
+        const statusCode =
+            result.status === "INVALID_REQUEST" ? 400 :
+            result.status === "UNAVAILABLE" ? 503 :
+            200;
+
+        return res.status(statusCode).json(result);
+    } catch (_) {
+        return res.status(500).json({
+            status: "UNAVAILABLE",
+            message: "Provisional geographic search failed.",
+            places: []
+        });
+    }
+});
 module.exports = router;
