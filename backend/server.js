@@ -138,6 +138,10 @@ app.use(
 );
 app.use("/geo", areaResolver.router);
 app.use("/geo", nationalGeoRouter);
+app.use(
+  "/geo",
+  require("./geographic-service/geo/uganda-national-locality-resolver").router
+);
 app.use("/geo/v2", metropolitanRouter);
 app.listen(port, () => {
   console.log(`Jarvis Backend listening at http://localhost:${port}`);
