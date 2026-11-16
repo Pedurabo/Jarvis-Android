@@ -143,6 +143,10 @@ app.use(
   require("./geographic-service/geo/uganda-national-locality-resolver").router
 );
 app.use("/geo/v2", metropolitanRouter);
+app.use(
+  "/diplomatic",
+  require("./geographic-service/geo/uganda-diplomatic-historical-route")
+);
 app.listen(port, () => {
   console.log(`Jarvis Backend listening at http://localhost:${port}`);
 });
