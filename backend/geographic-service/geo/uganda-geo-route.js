@@ -454,13 +454,14 @@ router.get("/provisional-district-search", (req, res) => {
 
     try {
         const result =
-            provisionalDistrictSearch.searchProvisional(
+            provisionalDistrictSearch.searchProvisionalPaged(
                 index,
                 districtAreas,
                 {
                     district: req.query.district,
                     category: req.query.category,
-                    limit
+                    limit,
+                    pageToken: req.query.pageToken,
                 }
             );
 

@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const geo = require("./uganda-places-index");
 const resolver = require("./uganda-district-resolver");
@@ -203,7 +203,180 @@ function searchProvisional(index, districtAreas, options) {
     };
 }
 
+const crypto = require("node:crypto");
+
+function searchProvisionalPaged(index, districtAreas, options) {
+    if (
+        !index ||
+        !Array.isArray(index.places) ||
+        !options ||
+        typeof options.district !== "string" ||
+        !geo.CATEGORIES.has(options.category) ||
+        !Number.isInteger(options.limit) ||
+        options.limit < 1 ||
+        options.limit > MAX_RESULTS
+    ) {
+        return { status: "INVALID_REQUEST", places: [] };
+    }
+
+    const resolved = resolver.resolveDistrict(
+        districtAreas, options.district
+    );
+
+    if (resolved.status !== "RESOLVED") {
+        return {
+            status: resolved.status,
+            candidates: resolved.candidates || [],
+            places: []
+        };
+    }
+
+    const district = resolved.district;
+    const bounds = district.mappedBounds;
+
+    if (!makeTiles(bounds)) {
+        return {
+            status: "UNAVAILABLE",
+            district,
+            reason: "DISTRICT_ENVELOPE_UNSUPPORTED",
+            places: []
+        };
+    }
+
+    const identity = JSON.stringify({
+        name: district.name,
+        bounds: district.mappedBounds
+    });
+
+    const snapshot = String(index.generatedAt || "");
+
+    const fingerprint = crypto.createHash("sha256")
+        .update(JSON.stringify({
+            identity,
+            category: options.category,
+            snapshot,
+            bounds
+        }))
+        .digest("hex");
+
+    const token = options.pageToken;
+    let offset = 0;
+
+    if (token != null) {
+        if (
+            typeof token !== "string" ||
+            !/^[A-Za-z0-9_-]{1,512}$/.test(token)
+        ) {
+            return { status: "INVALID_REQUEST", places: [] };
+        }
+
+        try {
+            const decoded = Buffer.from(
+                token, "base64url"
+            ).toString("utf8");
+
+            const cursor = JSON.parse(decoded);
+
+            if (
+                !cursor ||
+                cursor.version !== 1 ||
+                cursor.fingerprint !== fingerprint ||
+                cursor.limit !== options.limit ||
+                !Number.isSafeInteger(cursor.offset) ||
+                cursor.offset < 1
+            ) {
+                return {
+                    status: "INVALID_REQUEST",
+                    places: []
+                };
+            }
+
+            offset = cursor.offset;
+        } catch (_) {
+            return { status: "INVALID_REQUEST", places: [] };
+        }
+    }
+
+    const unique = new Map();
+
+    for (const place of index.places) {
+        if (!place || place.category !== options.category) {
+            continue;
+        }
+
+        if (
+            typeof place.providerId !== "string" ||
+            !Number.isFinite(place.latitude) ||
+            !Number.isFinite(place.longitude)
+        ) {
+            return {
+                status: "UNAVAILABLE",
+                reason: "INVALID_PLACE_RECORD",
+                places: []
+            };
+        }
+
+        if (
+            place.latitude < bounds.south - EPSILON ||
+            place.latitude > bounds.north + EPSILON ||
+            place.longitude < bounds.west - EPSILON ||
+            place.longitude > bounds.east + EPSILON
+        ) {
+            continue;
+        }
+
+        if (!unique.has(place.providerId)) {
+            unique.set(place.providerId, place);
+        }
+    }
+
+    const ordered = [...unique.values()].sort(
+        (a, b) => a.providerId.localeCompare(b.providerId)
+    );
+
+    if (offset >= ordered.length && offset !== 0) {
+        return {
+            status: "INVALID_REQUEST",
+            places: []
+        };
+    }
+
+    const places = ordered.slice(
+        offset, offset + options.limit
+    );
+
+    const nextOffset = offset + places.length;
+
+    const nextPageToken = nextOffset < ordered.length
+        ? Buffer.from(JSON.stringify({
+            version: 1,
+            fingerprint,
+            limit: options.limit,
+            offset: nextOffset
+        })).toString("base64url")
+        : null;
+
+    return {
+        status: "PROVISIONAL",
+        district,
+        searchType: "DISTRICT_BOUNDING_BOX",
+        districtMembershipVerified: false,
+        boundaryVerified: false,
+        verification: "MAP_LISTINGS_ONLY",
+        message:
+            "These are map-listed places within the district's " +
+            "mapped bounding box. District membership and " +
+            "individual listings have not been independently verified.",
+        places,
+        nextPageToken,
+        hasMore: nextPageToken !== null,
+        snapshotGeneratedAt: index.generatedAt,
+        attribution: index.attribution,
+        license: index.license
+    };
+}
 module.exports = {
     makeTiles,
-    searchProvisional
+    searchProvisional,
+    searchProvisionalPaged
 };
